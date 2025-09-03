@@ -1,13 +1,26 @@
 <apex:page controller="ProgramEnrollmentInvoiceController"
            renderAs="pdf" showHeader="false" applyBodyTag="false">
   <style>
-    body, table { font-family: Helvetica, Arial, sans-serif; font-size:11px; line-height:1.4; }
+    body, table { font-family: Helvetica, Arial, sans-serif; font-size:11px; line-height:1.45; }
     th { background:#f4f6f9; }
     h2 { margin:0 0 4px 0; }
+    h3 { margin:14px 0 6px; }
+    .small { font-size:10px; }
+    .muted { color:#555; }
+    .section { margin-top:18px; }
+    .hr { border-top:1px solid #ddd; margin:16px 0; }
+    .tight td { padding:2px 0; }
+
+    /* Make links look like classic hyperlinks in PDFs */
+    a, a:link, a:visited {
+      color: #0a66c2;
+      text-decoration: underline;
+    }
   </style>
 
   <apex:variable var="pe" value="{!progEnroll}"/>
 
+  <!-- Header -->
   <table width="100%">
     <tr>
       <td>
@@ -23,9 +36,8 @@
         </div>
       </td>
       <td align="right">
-        <!-- Re-enabled logo; Static Resource must be named ImplemenationScienceLogo -->
         <img src="{!URLFOR($Resource.ImplemenationScienceLogo)}" width="180"/>
-        <div style="font-size:10px; margin-top:4px; text-align:right;">
+        <div class="small" style="margin-top:4px; text-align:right;">
           Implementation Science Training Program<br/>
           University of California San Francisco
         </div>
@@ -33,7 +45,8 @@
     </tr>
   </table>
 
-  <h3 style="margin:14px 0 6px;">Course Connections</h3>
+  <!-- Lines -->
+  <h3>Course Connections</h3>
   <table width="100%" border="1" cellspacing="0" cellpadding="4">
     <tr>
       <th align="left">Course Connection ID</th>
@@ -95,5 +108,76 @@
     </tr>
   </table>
 
-  <div style="margin-top:16px; font-size:10px;">Thank you for your registration.</div>
+  <div class="small" style="margin-top:16px;">Thank you for your registration.</div>
+
+  <div class="hr"></div>
+
+  <!-- Footer with clickable links -->
+  <div>
+    <h3>Enrollment & Payment Information</h3>
+
+    <p>
+      Enrollment is confirmed once payment is received. Courses may be paid for in advance or on a term-by-term basis.
+      Courses paid in advance will not be subject to future enrollment fee increases. Courses fill on a first-come,
+      first-served basis and many courses tend to fill ahead of the registration deadline (below). If payment is
+      received after a course has filled, the learner will be added to the waitlist and notified. If a seat in that
+      course does not become available, the learner may choose to receive a full refund for that course or to be
+      enrolled in another course.
+    </p>
+
+    <div class="section">
+      <b>Enrollment deadlines:</b>
+      <table class="tight">
+        <tr><td>Fall:</td><td>Aug 1</td></tr>
+        <tr><td>Winter:</td><td>Dec 1</td></tr>
+        <tr><td>Spring:</td><td>March 1</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <b>Accepted forms of Payment:</b>
+      <ul>
+        <li>
+          For a UCSF fund, if the required information was not previously entered on the registration form, please send
+          the chartstring or speedtype to
+          <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.
+        </li>
+        <li>
+          For credit card payments (Visa/Mastercard), please visit:<br/>
+          <a href="https://secure.payconex.net/paymentpage/enhanced/index.php?action=view&amp;aid=120615635381&amp;id=140324">
+            UCSF Secure Credit Card Payment Portal
+          </a>
+        </li>
+        <li>
+          For electronic wire transfer, please attach the wire confirmation to an email. Include the learner’s name and
+          course number(s) and send to both
+          <a href="mailto:Online-Education@ucsf.edu">Online-Education@ucsf.edu</a>
+          and
+          <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.
+        </li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <table class="tight">
+        <tr><td><b>ABA Routing No for Wires</b></td><td>026009593</td></tr>
+        <tr><td><b>SWIFT Code (international)</b></td><td>BOFAUS3N</td></tr>
+        <tr><td><b>ACH - ABA Routing (ACH payments)</b></td><td>121000358</td></tr>
+        <tr><td><b>SWIFT Code</b></td><td>Not applicable</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <b>Bank and Bank Address:</b><br/>
+      Bank of America<br/>
+      2000 Clayton Road<br/>
+      Concord, CA 94520
+    </div>
+
+    <p class="section">
+      Please email
+      <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>
+      with questions regarding payment.
+    </p>
+  </div>
 </apex:page>

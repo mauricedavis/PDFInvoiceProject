@@ -27,8 +27,8 @@ public with sharing class ProgramEnrollmentInvoiceController {
         lines = [
             SELECT Id, Name,
                    Role__c,
-                   Term_Name__c,
-                   Course_Fee__c,
+                   Term_Name__c,          /* formula (read-only) */
+                   Course_Fee__c,         /* formula (read-only) */
                    hed__Status__c,
                    hed__Course_Offering__r.hed__Start_Date__c,
                    hed__Course_Offering__r.hed__Course__r.Name

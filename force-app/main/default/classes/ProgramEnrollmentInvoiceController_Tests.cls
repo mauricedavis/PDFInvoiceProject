@@ -20,13 +20,12 @@ private class ProgramEnrollmentInvoiceController_Tests {
             hed__Start_Date__c = Date.newInstance(2028,3,1)
         ); insert offering;
 
+        // DO NOT set Term_Name__c or Course_Fee__c (they're formulas)
         hed__Course_Enrollment__c ce = new hed__Course_Enrollment__c(
             hed__Program_Enrollment__c = pe.Id,
             hed__Course_Offering__c = offering.Id,
             hed__Status__c = 'Pending Payment',
-            Role__c = 'Learner',
-            Term_Name__c = 'Spring 2028',
-            Course_Fee__c = 2900
+            Role__c = 'Learner'
         ); insert ce;
 
         Test.startTest();

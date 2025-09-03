@@ -19,6 +19,7 @@
         <div>Date: {!TEXT(TODAY())}</div>
       </td>
       <td align="right">
+        <!-- IMPORTANT: exact Static Resource name, no extra punctuation -->
         <apex:image value="{!.ImplemenationScienceLogo}" width="180"/>
         <div style="font-size:10px; margin-top:4px; text-align:right;">
           Implementation Science Training Program<br/>
@@ -43,6 +44,7 @@
       <tr>
         <td>{!l.Name}</td>
         <td>{!l.hed__Course_Offering__r.hed__Course__r.Name}</td>
+        <!-- both are formulas on Course Connection -->
         <td>{!l.Term_Name__c}</td>
         <td>{!IF(NOT(ISBLANK(l.hed__Course_Offering__r.hed__Start_Date__c)), TEXT(l.hed__Course_Offering__r.hed__Start_Date__c), '')}</td>
         <td>{!l.hed__Status__c}</td>

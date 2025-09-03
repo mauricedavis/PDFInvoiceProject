@@ -54,8 +54,7 @@ public with sharing class ProgramEnrollmentInvoiceController {
         PageReference p = Page.ProgramEnrollmentInvoicePDF;
         p.getParameters().put('id', (String)programEnrollmentId);
 
-        Blob pdf = Test.isRunningTest() ? Blob.valueOf('fake pdf')
-                                        : p.getContentAsPDF();
+        Blob pdf = Test.isRunningTest() ? Blob.valueOf('fake pdf') : p.getContentAsPDF();
 
         String title = 'Invoice_' + String.valueOf(programEnrollmentId).right(6);
         ContentVersion cv = new ContentVersion(
@@ -75,7 +74,7 @@ public with sharing class ProgramEnrollmentInvoiceController {
             ShareType = 'V'
         );
 
-        // Set created + remember last CV Id
+        // Mark created & remember last CV Id
         update new hed__Program_Enrollment__c(
             Id = programEnrollmentId,
             Invoice_Created__c = true,
@@ -87,9 +86,10 @@ public with sharing class ProgramEnrollmentInvoiceController {
 
     @AuraEnabled
     public static Id generateAttachAndEmail(Id programEnrollmentId, List<String> additionalToAddresses) {
+        // 1) Always attach first (also sets Invoice_Created__c + last CV Id)
         Id cvId = generateAndAttach(programEnrollmentId);
 
-        // Fresh reads for email details
+        // 2) Gather email details
         hed__Program_Enrollment__c pe = [
             SELECT Id, Name, hed__Account__r.Name,
                    hed__Contact__c, hed__Contact__r.Name, hed__Contact__r.Email
@@ -101,70 +101,55 @@ public with sharing class ProgramEnrollmentInvoiceController {
             FROM ContentVersion WHERE Id = :cvId
         ];
 
-        // Build the email attachment
-        Messaging.EmailFileAttachment att = new Messaging.EmailFileAttachment();
-        att.setFileName(cv.Title + '.' + cv.FileExtension);
-        att.setInline(false);
-        att.setBody(cv.VersionData);
-
-        // Send the email
-        Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
         String toAddr = (pe.hed__Contact__r != null) ? pe.hed__Contact__r.Email : null;
-
-        if (pe.hed__Contact__c != null) {
-            mail.setTargetObjectId(pe.hed__Contact__c); // ensures Contact activity
-        } else if (toAddr != null) {
-            mail.setToAddresses(new List<String>{ toAddr });
-        }
-
-        mail.setWhatId(programEnrollmentId);         // log against Program Enrollment
-        mail.setSaveAsActivity(true);                // best-effort system logging
-
-        if (additionalToAddresses != null && !additionalToAddresses.isEmpty()) {
-            mail.setCcAddresses(additionalToAddresses);
-        }
-
         String subject = 'Invoice – ' + pe.Name + ' (' + pe.hed__Account__r.Name + ')';
         String body = 'Hello ' +
             (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student') + ',\n\n' +
             'Attached is your invoice for the program enrollment. Thank you.\n\n' +
             'Student Services';
 
+        // 3) Send the email
+        Messaging.EmailFileAttachment att = new Messaging.EmailFileAttachment();
+        att.setFileName(cv.Title + '.' + cv.FileExtension);
+        att.setInline(false);
+        att.setBody(cv.VersionData);
+
+        Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+        if (pe.hed__Contact__c != null) {
+            mail.setTargetObjectId(pe.hed__Contact__c); // ensures activity against Contact
+        } else if (toAddr != null) {
+            mail.setToAddresses(new List<String>{ toAddr });
+        }
+        mail.setWhatId(programEnrollmentId);          // activity on Program Enrollment
+        mail.setSaveAsActivity(true);
+        if (additionalToAddresses != null && !additionalToAddresses.isEmpty()) {
+            mail.setCcAddresses(additionalToAddresses);
+        }
         mail.setSubject(subject);
         mail.setPlainTextBody(body);
         mail.setFileAttachments(new Messaging.EmailFileAttachment[] { att });
 
         Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
 
-        // --- HARD-LOG EmailMessage for reliable audit on PE + relation to Contact ---
-        EmailMessage em = new EmailMessage();
-        em.Subject      = subject;
-        em.FromAddress  = UserInfo.getUserEmail();
-        em.ToAddress    = toAddr;
-        em.RelatedToId  = programEnrollmentId; // shows on PE
-        em.MessageDate  = System.now();
-        em.Status       = '3';       // Sent
-        em.Incoming     = false;
-        em.TextBody     = body;
-        insert em;
+        // 4) HARD AUDIT: create a Completed Task so you always see it on both records
+        Task t = new Task(
+            Subject      = 'Invoice emailed',
+            Status       = 'Completed',
+            Priority     = 'Normal',
+            ActivityDate = Date.today(),
+            WhatId       = programEnrollmentId,           // shows on Program Enrollment
+            WhoId        = pe.hed__Contact__c             // shows on Contact (if present)
+        );
+        insert t;
 
-        // Link Contact as recipient (if available)
-        if (pe.hed__Contact__c != null) {
-            insert new EmailMessageRelation(
-                EmailMessageId = em.Id,
-                RelationId     = pe.hed__Contact__c,
-                RelationType   = 'ToAddress'
-            );
-        }
-
-        // Also link the generated file to the EmailMessage for audit convenience
+        // 5) Link the file to the Task too (optional but handy)
         insert new ContentDocumentLink(
             ContentDocumentId = cv.ContentDocumentId,
-            LinkedEntityId    = em.Id,
+            LinkedEntityId    = t.Id,
             ShareType         = 'V'
         );
 
-        // Update sent flags and last-sent timestamp + last CV Id
+        // 6) Mark emailed & last-sent timestamp & last CV Id
         update new hed__Program_Enrollment__c(
             Id = programEnrollmentId,
             Invoice_Emailed__c = true,

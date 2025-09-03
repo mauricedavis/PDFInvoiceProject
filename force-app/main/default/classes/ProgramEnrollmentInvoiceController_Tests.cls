@@ -43,20 +43,30 @@ private class ProgramEnrollmentInvoiceController_Tests {
 
         System.assertNotEquals(null, cvId, 'ContentVersion Id should be returned');
 
+        // Flags on PE
         hed__Program_Enrollment__c peAfter = [
             SELECT Invoice_Created__c, Invoice_Emailed__c,
                    Invoice_Last_Sent__c, Last_Invoice_ContentVersion_Id__c
             FROM hed__Program_Enrollment__c WHERE Id = :pe.Id
         ];
-
         System.assertEquals(true, peAfter.Invoice_Created__c, 'Invoice_Created__c should be true');
         System.assertEquals(true, peAfter.Invoice_Emailed__c, 'Invoice_Emailed__c should be true');
         System.assertNotEquals(null, peAfter.Invoice_Last_Sent__c, 'Invoice_Last_Sent__c should be set');
         System.assertNotEquals(null, peAfter.Last_Invoice_ContentVersion_Id__c, 'Last_Invoice_ContentVersion_Id__c should be set');
 
+        // File linked to PE
         ContentDocumentLink cdl = [
             SELECT Id FROM ContentDocumentLink WHERE LinkedEntityId = :pe.Id LIMIT 1
         ];
         System.assert(cdl != null, 'Invoice PDF should be linked to the Program Enrollment');
+
+        // EmailMessage logged on PE
+        EmailMessage em = [
+            SELECT Id, RelatedToId, Status, Incoming
+            FROM EmailMessage WHERE RelatedToId = :pe.Id LIMIT 1
+        ];
+        System.assert(em != null, 'EmailMessage should be created and related to Program Enrollment');
+        System.assertEquals('3', em.Status, 'EmailMessage should be Sent');
+        System.assertEquals(false, em.Incoming, 'EmailMessage should be outgoing');
     }
 }

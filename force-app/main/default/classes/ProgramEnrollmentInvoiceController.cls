@@ -28,10 +28,8 @@ public with sharing class ProgramEnrollmentInvoiceController {
         ];
 
         lines = [
-            SELECT Id, Name,
-                   Role__c,
-                   Term_Name__c,
-                   Course_Fee__c,
+            SELECT Id, Name, Role__c,
+                   Term_Name__c, Course_Fee__c,
                    hed__Status__c,
                    hed__Course_Offering__r.hed__Start_Date__c,
                    hed__Course_Offering__r.hed__Course__r.Name
@@ -56,7 +54,8 @@ public with sharing class ProgramEnrollmentInvoiceController {
         PageReference p = Page.ProgramEnrollmentInvoicePDF;
         p.getParameters().put('id', (String)programEnrollmentId);
 
-        Blob pdf = Test.isRunningTest() ? Blob.valueOf('fake pdf') : p.getContentAsPDF();
+        Blob pdf = Test.isRunningTest() ? Blob.valueOf('fake pdf')
+                                        : p.getContentAsPDF();
 
         String title = 'Invoice_' + String.valueOf(programEnrollmentId).right(6);
         ContentVersion cv = new ContentVersion(
@@ -76,6 +75,7 @@ public with sharing class ProgramEnrollmentInvoiceController {
             ShareType = 'V'
         );
 
+        // Set created + remember last CV Id
         update new hed__Program_Enrollment__c(
             Id = programEnrollmentId,
             Invoice_Created__c = true,
@@ -89,6 +89,7 @@ public with sharing class ProgramEnrollmentInvoiceController {
     public static Id generateAttachAndEmail(Id programEnrollmentId, List<String> additionalToAddresses) {
         Id cvId = generateAndAttach(programEnrollmentId);
 
+        // Fresh reads for email details
         hed__Program_Enrollment__c pe = [
             SELECT Id, Name, hed__Account__r.Name,
                    hed__Contact__c, hed__Contact__r.Name, hed__Contact__r.Email
@@ -96,40 +97,74 @@ public with sharing class ProgramEnrollmentInvoiceController {
         ];
 
         ContentVersion cv = [
-            SELECT Id, Title, VersionData, FileExtension
+            SELECT Id, Title, VersionData, FileExtension, ContentDocumentId
             FROM ContentVersion WHERE Id = :cvId
         ];
 
+        // Build the email attachment
         Messaging.EmailFileAttachment att = new Messaging.EmailFileAttachment();
         att.setFileName(cv.Title + '.' + cv.FileExtension);
         att.setInline(false);
         att.setBody(cv.VersionData);
 
+        // Send the email
         Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+        String toAddr = (pe.hed__Contact__r != null) ? pe.hed__Contact__r.Email : null;
 
         if (pe.hed__Contact__c != null) {
-            mail.setTargetObjectId(pe.hed__Contact__c);
-        } else if (pe.hed__Contact__r != null && pe.hed__Contact__r.Email != null) {
-            mail.setToAddresses(new List<String>{ pe.hed__Contact__r.Email });
+            mail.setTargetObjectId(pe.hed__Contact__c); // ensures Contact activity
+        } else if (toAddr != null) {
+            mail.setToAddresses(new List<String>{ toAddr });
         }
 
-        mail.setWhatId(programEnrollmentId);
-        mail.setSaveAsActivity(true);
+        mail.setWhatId(programEnrollmentId);         // log against Program Enrollment
+        mail.setSaveAsActivity(true);                // best-effort system logging
 
         if (additionalToAddresses != null && !additionalToAddresses.isEmpty()) {
             mail.setCcAddresses(additionalToAddresses);
         }
 
-        mail.setSubject('Invoice – ' + pe.Name + ' (' + pe.hed__Account__r.Name + ')');
-        mail.setPlainTextBody(
-            'Hello ' + (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student') + ',\n\n' +
+        String subject = 'Invoice – ' + pe.Name + ' (' + pe.hed__Account__r.Name + ')';
+        String body = 'Hello ' +
+            (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student') + ',\n\n' +
             'Attached is your invoice for the program enrollment. Thank you.\n\n' +
-            'Student Services'
-        );
+            'Student Services';
+
+        mail.setSubject(subject);
+        mail.setPlainTextBody(body);
         mail.setFileAttachments(new Messaging.EmailFileAttachment[] { att });
 
         Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
 
+        // --- HARD-LOG EmailMessage for reliable audit on PE + relation to Contact ---
+        EmailMessage em = new EmailMessage();
+        em.Subject      = subject;
+        em.FromAddress  = UserInfo.getUserEmail();
+        em.ToAddress    = toAddr;
+        em.RelatedToId  = programEnrollmentId; // shows on PE
+        em.MessageDate  = System.now();
+        em.Status       = '3';       // Sent
+        em.Incoming     = false;
+        em.TextBody     = body;
+        insert em;
+
+        // Link Contact as recipient (if available)
+        if (pe.hed__Contact__c != null) {
+            insert new EmailMessageRelation(
+                EmailMessageId = em.Id,
+                RelationId     = pe.hed__Contact__c,
+                RelationType   = 'ToAddress'
+            );
+        }
+
+        // Also link the generated file to the EmailMessage for audit convenience
+        insert new ContentDocumentLink(
+            ContentDocumentId = cv.ContentDocumentId,
+            LinkedEntityId    = em.Id,
+            ShareType         = 'V'
+        );
+
+        // Update sent flags and last-sent timestamp + last CV Id
         update new hed__Program_Enrollment__c(
             Id = programEnrollmentId,
             Invoice_Emailed__c = true,

@@ -6,6 +6,9 @@ public with sharing class ProgramEnrollmentInvoiceController {
     public Decimal taxAmount { get; private set; }
     public Decimal total { get; private set; }
 
+    public List<hed__Course_Enrollment__c> getLines() { return lines; }
+    public hed__Program_Enrollment__c getProgEnroll() { return progEnroll; }
+
     public ProgramEnrollmentInvoiceController() {
         peId = ApexPages.currentPage().getParameters().get('id');
         load(peId);
@@ -23,13 +26,12 @@ public with sharing class ProgramEnrollmentInvoiceController {
 
         lines = [
             SELECT Id, Name,
-                   hed__Course__r.Name,
-                   hed__Term__r.Name,
-                   hed__Role__c,
+                   Role__c,
+                   Term_Name__c,
+                   Course_Fee__c,
                    hed__Status__c,
                    hed__Course_Offering__r.hed__Start_Date__c,
-                   hed__Course_Offering__r.hed__Course__r.Name,
-                   Course_Fee__c
+                   hed__Course_Offering__r.hed__Course__r.Name
             FROM hed__Course_Enrollment__c
             WHERE hed__Program_Enrollment__c = :programEnrollmentId
             ORDER BY hed__Course_Offering__r.hed__Start_Date__c NULLS LAST, CreatedDate
@@ -106,11 +108,7 @@ public with sharing class ProgramEnrollmentInvoiceController {
         Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
         mail.setToAddresses(toList);
         mail.setSubject('Invoice – ' + pe.Name + ' (' + pe.hed__Account__r.Name + ')');
-        mail.setPlainTextBody(
-            'Hello ' + pe.hed__Contact__r.Name + ',\n\n' +
-            'Attached is your invoice for the program enrollment. Thank you.\n\n' +
-            'Student Services'
-        );
+        mail.setPlainTextBody('Hello ' + pe.hed__Contact__r.Name + ',\n\nAttached is your invoice for the program enrollment. Thank you.\n\nStudent Services');
         mail.setFileAttachments(new Messaging.EmailFileAttachment[] { att });
         mail.setTreatTargetObjectAsRecipient(false);
         mail.setSaveAsActivity(true);

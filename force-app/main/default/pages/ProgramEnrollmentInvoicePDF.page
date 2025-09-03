@@ -1,81 +1,70 @@
 <apex:page controller="ProgramEnrollmentInvoiceController"
-           renderAs="pdf"
-           showHeader="false"
-           applyBodyTag="false"
+           renderAs="pdf" showHeader="false" applyBodyTag="false"
            language="{!.LocaleSidKey}">
-    <style>
-      body, table { font-family: Helvetica, Arial, sans-serif; font-size:11px; line-height:1.4; }
-      h2 { margin:0 0 4px 0; }
-      th { background:#f4f6f9; }
-    </style>
+  <style>
+    body, table { font-family: Helvetica, Arial, sans-serif; font-size:11px; line-height:1.4; }
+    th { background:#f4f6f9; }
+    h2 { margin:0 0 4px 0; }
+  </style>
 
-    <apex:variable var="pe" value="{!progEnroll}"/>
+  <apex:variable var="pe" value="{!progEnroll}"/>
 
-    <div>
-        <table width="100%">
-            <tr>
-                <td>
-                    <h2>Invoice – {!pe.Name}</h2>
-                    <div>Student: {!pe.hed__Contact__r.Name}</div>
-                    <div>Program: {!pe.hed__Account__r.Name}</div>
-                    <div>Enrollment Status: {!pe.hed__Enrollment_Status__c}</div>
-                    <div>Date: {!TEXT(TODAY())}</div>
-                </td>
-                <td align="right">
-                    <apex:image value="{!.ImplemenationScienceLogo}" width="180"/>
-                    <div style="font-size:10px; margin-top:4px; text-align:right;">
-                        Implementation Science Training Program<br/>
-                        University of California San Francisco
-                    </div>
-                </td>
-            </tr>
-        </table>
+  <table width="100%">
+    <tr>
+      <td>
+        <h2>Invoice – {!pe.Name}</h2>
+        <div>Student: {!pe.hed__Contact__r.Name}</div>
+        <div>Program: {!pe.hed__Account__r.Name}</div>
+        <div>Enrollment Status: {!pe.hed__Enrollment_Status__c}</div>
+        <div>Date: {!TEXT(TODAY())}</div>
+      </td>
+      <td align="right">
+        <apex:image value="{!.ImplemenationScienceLogo}" width="180"/>
+        <div style="font-size:10px; margin-top:4px; text-align:right;">
+          Implementation Science Training Program<br/>
+          University of California San Francisco
+        </div>
+      </td>
+    </tr>
+  </table>
 
-        <h3 style="margin:14px 0 6px;">Course Connections</h3>
-        <table width="100%" border="1" cellspacing="0" cellpadding="4">
-            <tr>
-                <th align="left">Course Connection ID</th>
-                <th align="left">Course Name</th>
-                <th align="left">Term</th>
-                <th align="left">Course Start</th>
-                <th align="left">Status</th>
-                <th align="left">Role</th>
-                <th align="right">Course Fee</th>
-            </tr>
-            <apex:repeat value="{!lines}" var="l">
-                <tr>
-                    <td>{!l.Name}</td>
-                    <td>
-                        {!IF(NOT(ISBLANK(l.hed__Course__r.Name)), l.hed__Course__r.Name,
-                            IF(NOT(ISBLANK(l.hed__Course_Offering__r.hed__Course__r.Name)),
-                               l.hed__Course_Offering__r.hed__Course__r.Name, ''))}
-                    </td>
-                    <td>{!IF(NOT(ISBLANK(l.hed__Term__r.Name)), l.hed__Term__r.Name, '')}</td>
-                    <td>
-                        {!IF(NOT(ISBLANK(l.hed__Course_Offering__r.hed__Start_Date__c)),
-                             TEXT(l.hed__Course_Offering__r.hed__Start_Date__c), '')}
-                    </td>
-                    <td>{!l.hed__Status__c}</td>
-                    <td>{!l.hed__Role__c}</td>
-                    <td align="right">{!TEXT(l.Course_Fee__c)}</td>
-                </tr>
-            </apex:repeat>
-            <tr>
-                <td colspan="6" align="right"><b>Subtotal</b></td>
-                <td align="right"><b>{!TEXT(subtotal)}</b></td>
-            </tr>
-            <apex:outputPanel rendered="{!taxAmount != null && taxAmount != 0}">
-                <tr>
-                    <td colspan="6" align="right">Tax</td>
-                    <td align="right">{!TEXT(taxAmount)}</td>
-                </tr>
-            </apex:outputPanel>
-            <tr>
-                <td colspan="6" align="right"><b>Total</b></td>
-                <td align="right"><b>{!TEXT(total)}</b></td>
-            </tr>
-        </table>
+  <h3 style="margin:14px 0 6px;">Course Connections</h3>
+  <table width="100%" border="1" cellspacing="0" cellpadding="4">
+    <tr>
+      <th align="left">Course Connection ID</th>
+      <th align="left">Course Name</th>
+      <th align="left">Term</th>
+      <th align="left">Course Start</th>
+      <th align="left">Status</th>
+      <th align="left">Role</th>
+      <th align="right">Course Fee</th>
+    </tr>
+    <apex:repeat value="{!lines}" var="l">
+      <tr>
+        <td>{!l.Name}</td>
+        <td>{!l.hed__Course_Offering__r.hed__Course__r.Name}</td>
+        <td>{!l.Term_Name__c}</td>
+        <td>{!IF(NOT(ISBLANK(l.hed__Course_Offering__r.hed__Start_Date__c)), TEXT(l.hed__Course_Offering__r.hed__Start_Date__c), '')}</td>
+        <td>{!l.hed__Status__c}</td>
+        <td>{!l.Role__c}</td>
+        <td align="right">{!TEXT(l.Course_Fee__c)}</td>
+      </tr>
+    </apex:repeat>
+    <tr>
+      <td colspan="6" align="right"><b>Subtotal</b></td>
+      <td align="right"><b>{!TEXT(subtotal)}</b></td>
+    </tr>
+    <apex:outputPanel rendered="{!taxAmount != null && taxAmount != 0}">
+      <tr>
+        <td colspan="6" align="right">Tax</td>
+        <td align="right">{!TEXT(taxAmount)}</td>
+      </tr>
+    </apex:outputPanel>
+    <tr>
+      <td colspan="6" align="right"><b>Total</b></td>
+      <td align="right"><b>{!TEXT(total)}</b></td>
+    </tr>
+  </table>
 
-        <div style="margin-top:16px; font-size:10px;">Thank you for your registration.</div>
-    </div>
+  <div style="margin-top:16px; font-size:10px;">Thank you for your registration.</div>
 </apex:page>

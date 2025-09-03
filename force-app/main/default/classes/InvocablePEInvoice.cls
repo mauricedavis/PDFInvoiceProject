@@ -5,7 +5,7 @@ public with sharing class InvocablePEInvoice {
     }
     public class Response { @InvocableVariable public Id contentVersionId; }
 
-    @InvocableMethod
+    @InvocableMethod(label='Generate & Email Invoice (Program Enrollment)', description='Render invoice PDF for Program Enrollment, attach, and email student (+ optional recipients).')
     public static List<Response> generateAndEmail(List<Request> requests) {
         List<Response> outList = new List<Response>();
         for (Request r : requests) {

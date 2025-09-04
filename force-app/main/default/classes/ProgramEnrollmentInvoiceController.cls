@@ -1,4 +1,4 @@
-public with sharing class ProgramEnrollmentInvoiceController {
+public without sharing class ProgramEnrollmentInvoiceController {
     public Id peId { get; private set; }
     public hed__Program_Enrollment__c progEnroll { get; private set; }
     public List<hed__Course_Enrollment__c> lines { get; private set; }
@@ -70,8 +70,8 @@ public with sharing class ProgramEnrollmentInvoiceController {
 
         insert new ContentDocumentLink(
             ContentDocumentId = cdId,
-            LinkedEntityId = programEnrollmentId,
-            ShareType = 'V'
+            LinkedEntityId    = programEnrollmentId,
+            ShareType         = 'V'
         );
 
         // Mark created & remember last CV Id
@@ -86,10 +86,10 @@ public with sharing class ProgramEnrollmentInvoiceController {
 
     @AuraEnabled
     public static Id generateAttachAndEmail(Id programEnrollmentId, List<String> additionalToAddresses) {
-        // 1) Always attach first (also sets Invoice_Created__c + last CV Id)
+        // 1) Attach (also sets Invoice_Created__c & last CV Id)
         Id cvId = generateAndAttach(programEnrollmentId);
 
-        // 2) Gather email details
+        // 2) Fresh reads
         hed__Program_Enrollment__c pe = [
             SELECT Id, Name, hed__Account__r.Name,
                    hed__Contact__c, hed__Contact__r.Name, hed__Contact__r.Email
@@ -101,14 +101,12 @@ public with sharing class ProgramEnrollmentInvoiceController {
             FROM ContentVersion WHERE Id = :cvId
         ];
 
-        String toAddr = (pe.hed__Contact__r != null) ? pe.hed__Contact__r.Email : null;
+        String toAddr  = (pe.hed__Contact__r != null) ? pe.hed__Contact__r.Email : null;
         String subject = 'Invoice – ' + pe.Name + ' (' + pe.hed__Account__r.Name + ')';
-        String body = 'Hello ' +
-            (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student') + ',\n\n' +
-            'Attached is your invoice for the program enrollment. Thank you.\n\n' +
-            'Student Services';
+        String body    = 'Hello ' + (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student') +
+                         ',\n\nAttached is your invoice for the program enrollment. Thank you.\n\nStudent Services';
 
-        // 3) Send the email
+        // 3) Send email (synchronous)
         Messaging.EmailFileAttachment att = new Messaging.EmailFileAttachment();
         att.setFileName(cv.Title + '.' + cv.FileExtension);
         att.setInline(false);
@@ -116,11 +114,11 @@ public with sharing class ProgramEnrollmentInvoiceController {
 
         Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
         if (pe.hed__Contact__c != null) {
-            mail.setTargetObjectId(pe.hed__Contact__c); // ensures activity against Contact
+            mail.setTargetObjectId(pe.hed__Contact__c);
         } else if (toAddr != null) {
             mail.setToAddresses(new List<String>{ toAddr });
         }
-        mail.setWhatId(programEnrollmentId);          // activity on Program Enrollment
+        mail.setWhatId(programEnrollmentId);
         mail.setSaveAsActivity(true);
         if (additionalToAddresses != null && !additionalToAddresses.isEmpty()) {
             mail.setCcAddresses(additionalToAddresses);
@@ -128,28 +126,47 @@ public with sharing class ProgramEnrollmentInvoiceController {
         mail.setSubject(subject);
         mail.setPlainTextBody(body);
         mail.setFileAttachments(new Messaging.EmailFileAttachment[] { att });
-
         Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
 
-        // 4) HARD AUDIT: create a Completed Task so you always see it on both records
+        // 4) Guaranteed audit trail: Task
         Task t = new Task(
             Subject      = 'Invoice emailed',
             Status       = 'Completed',
             Priority     = 'Normal',
             ActivityDate = Date.today(),
-            WhatId       = programEnrollmentId,           // shows on Program Enrollment
-            WhoId        = pe.hed__Contact__c             // shows on Contact (if present)
+            WhatId       = programEnrollmentId,
+            WhoId        = pe.hed__Contact__c
         );
         insert t;
 
-        // 5) Link the file to the Task too (optional but handy)
+        // Link the file to the Task for convenience
         insert new ContentDocumentLink(
             ContentDocumentId = cv.ContentDocumentId,
             LinkedEntityId    = t.Id,
             ShareType         = 'V'
         );
 
-        // 6) Mark emailed & last-sent timestamp & last CV Id
+        // 5) Guaranteed audit trail: EmailMessage on PE + relation to Contact
+        EmailMessage em = new EmailMessage();
+        em.Subject     = subject;
+        em.FromAddress = UserInfo.getUserEmail();
+        em.ToAddress   = toAddr;
+        em.RelatedToId = programEnrollmentId;
+        em.MessageDate = System.now();
+        em.Status      = '3';      // Sent
+        em.Incoming    = false;
+        em.TextBody    = body;
+        insert em;
+
+        if (pe.hed__Contact__c != null) {
+            insert new EmailMessageRelation(
+                EmailMessageId = em.Id,
+                RelationId     = pe.hed__Contact__c,
+                RelationType   = 'ToAddress'
+            );
+        }
+
+        // 6) Update flags & timestamp (independent of email queue lag)
         update new hed__Program_Enrollment__c(
             Id = programEnrollmentId,
             Invoice_Emailed__c = true,

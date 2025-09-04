@@ -86,10 +86,10 @@ public without sharing class ProgramEnrollmentInvoiceController {
 
     @AuraEnabled
     public static Id generateAttachAndEmail(Id programEnrollmentId, List<String> additionalToAddresses) {
-        // 1) Attach first (sets Created + Last CV Id)
+        // 1) Attach first (sets Created + last CV Id)
         Id cvId = generateAndAttach(programEnrollmentId);
 
-        // 2) Get Email context
+        // 2) Email context
         hed__Program_Enrollment__c pe = [
             SELECT Id, Name, hed__Account__r.Name,
                    hed__Contact__c, hed__Contact__r.Name, hed__Contact__r.Email
@@ -105,7 +105,7 @@ public without sharing class ProgramEnrollmentInvoiceController {
         String body    = 'Hello ' + (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student') +
                          ',\n\nAttached is your invoice for the program enrollment. Thank you.\n\nStudent Services';
 
-        // 3) Send email (synchronous)
+        // 3) Submit email
         Messaging.EmailFileAttachment att = new Messaging.EmailFileAttachment();
         att.setFileName(cv.Title + '.' + cv.FileExtension);
         att.setInline(false);
@@ -113,11 +113,11 @@ public without sharing class ProgramEnrollmentInvoiceController {
 
         Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
         if (pe.hed__Contact__c != null) {
-            mail.setTargetObjectId(pe.hed__Contact__c); // logs to Contact when possible
+            mail.setTargetObjectId(pe.hed__Contact__c);   // activity on Contact
         } else if (toAddr != null) {
             mail.setToAddresses(new List<String>{ toAddr });
         }
-        mail.setWhatId(programEnrollmentId);          // logs to Program Enrollment when possible
+        mail.setWhatId(programEnrollmentId);              // activity on Program Enrollment (when allowed)
         mail.setSaveAsActivity(true);
         if (additionalToAddresses != null && !additionalToAddresses.isEmpty()) {
             mail.setCcAddresses(additionalToAddresses);
@@ -125,56 +125,54 @@ public without sharing class ProgramEnrollmentInvoiceController {
         mail.setSubject(subject);
         mail.setPlainTextBody(body);
         mail.setFileAttachments(new Messaging.EmailFileAttachment[] { att });
-        Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
 
-        // 4) Guaranteed audit trail — Task (shows on BOTH PE & Contact)
+        Messaging.SendEmailResult[] results = Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
+        if (results == null || results.isEmpty() || !results[0].isSuccess()) {
+            // Surface the real cause so it can be fixed if needed
+            Messaging.SendEmailError[] errs = results != null && !results.isEmpty() ? results[0].getErrors() : null;
+            String msg = (errs != null && !errs.isEmpty()) ? errs[0].getMessage() : 'Unknown email error';
+            System.debug('EMAIL_SUBMIT_FAILED: ' + msg);
+        }
+
+        // 4) Guaranteed audit: Task on both PE (WhatId) and Contact (WhoId)
         try {
             Task t = new Task(
-                Subject      = 'Invoice emailed',
-                Status       = 'Completed',
-                Priority     = 'Normal',
-                ActivityDate = Date.today(),
-                WhatId       = programEnrollmentId,
-                WhoId        = pe.hed__Contact__c
+                Subject='Invoice emailed', Status='Completed', Priority='Normal', ActivityDate=Date.today(),
+                WhatId=programEnrollmentId, WhoId=pe.hed__Contact__c
             );
             insert t;
 
-            // Link the file to the Task for convenience
             insert new ContentDocumentLink(
                 ContentDocumentId = cv.ContentDocumentId,
                 LinkedEntityId    = t.Id,
                 ShareType         = 'V'
             );
-        } catch (Exception e) {
-            // If WhatId is not allowed (activities disabled), retry with WhoId only
+        } catch (Exception exTask) {
+            // If activities disabled on PE, retry with WhoId only
             try {
                 Task t2 = new Task(
-                    Subject      = 'Invoice emailed',
-                    Status       = 'Completed',
-                    Priority     = 'Normal',
-                    ActivityDate = Date.today(),
-                    WhoId        = pe.hed__Contact__c
+                    Subject='Invoice emailed', Status='Completed', Priority='Normal', ActivityDate=Date.today(),
+                    WhoId=pe.hed__Contact__c
                 );
                 insert t2;
-            } catch (Exception e2) {
-                // swallow; field updates below still occur
+            } catch (Exception exTask2) {
+                System.debug('TASK_CREATE_FAILED: ' + exTask2.getMessage());
             }
         }
 
-        // 5) Best-effort EmailMessage (if Enhanced Email enabled & perms OK)
+        // 5) Best-effort EmailMessage (Enhanced Email)
         try {
             EmailMessage em = new EmailMessage();
             em.Subject     = subject;
             em.FromAddress = UserInfo.getUserEmail();
             em.ToAddress   = toAddr;
-            em.RelatedToId = programEnrollmentId;
+            em.RelatedToId = programEnrollmentId; // shows on PE
             em.MessageDate = System.now();
-            em.Status      = '3';      // Sent
+            em.Status      = '3';  // Sent
             em.Incoming    = false;
             em.TextBody    = body;
             insert em;
 
-            // Relate Contact as recipient
             if (pe.hed__Contact__c != null) {
                 insert new EmailMessageRelation(
                     EmailMessageId = em.Id,
@@ -183,31 +181,22 @@ public without sharing class ProgramEnrollmentInvoiceController {
                 );
             }
 
-            // Link the same file to EmailMessage for full audit
             insert new ContentDocumentLink(
                 ContentDocumentId = cv.ContentDocumentId,
                 LinkedEntityId    = em.Id,
                 ShareType         = 'V'
             );
-        } catch (Exception ignore) {
-            // Some orgs disable Enhanced Email or restrict EmailMessage DML; Task above still provides audit
+        } catch (Exception exEm){
+            System.debug('EMAIL_MESSAGE_CREATE_SKIPPED: ' + exEm.getMessage());
         }
 
-        // 6) Update flags + timestamp ALWAYS (independent of email queue delay)
-        try {
-            update new hed__Program_Enrollment__c(
-                Id = programEnrollmentId,
-                Invoice_Emailed__c = true,
-                Invoice_Last_Sent__c = System.now(),
-                Last_Invoice_ContentVersion_Id__c = cv.Id
-            );
-        } catch (Exception e) {
-            // As a fallback, at least set Created if Emailed fails (shouldn't happen under without sharing)
-            update new hed__Program_Enrollment__c(
-                Id = programEnrollmentId,
-                Invoice_Created__c = true
-            );
-        }
+        // 6) Update sent flags + timestamp (independent of queue lag)
+        update new hed__Program_Enrollment__c(
+            Id = programEnrollmentId,
+            Invoice_Emailed__c = true,
+            Invoice_Last_Sent__c = System.now(),
+            Last_Invoice_ContentVersion_Id__c = cv.Id
+        );
 
         return cv.Id;
     }

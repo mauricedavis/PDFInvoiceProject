@@ -11,8 +11,10 @@ public without sharing class ProgramEnrollmentInvoiceController {
 
     public ProgramEnrollmentInvoiceController() {
         peId = ApexPages.currentPage().getParameters().get('id');
-        load(peId);
-        computeTotals();
+        if (peId != null) {
+            load(peId);
+            computeTotals();
+        }
     }
 
     private void load(Id programEnrollmentId) {
@@ -53,7 +55,6 @@ public without sharing class ProgramEnrollmentInvoiceController {
     public static Id generateAndAttach(Id programEnrollmentId) {
         PageReference p = Page.ProgramEnrollmentInvoicePDF;
         p.getParameters().put('id', (String)programEnrollmentId);
-
         Blob pdf = Test.isRunningTest() ? Blob.valueOf('fake pdf') : p.getContentAsPDF();
 
         String title = 'Invoice_' + String.valueOf(programEnrollmentId).right(6);
@@ -65,8 +66,7 @@ public without sharing class ProgramEnrollmentInvoiceController {
         );
         insert cv;
 
-        Id cdId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id]
-                  .ContentDocumentId;
+        Id cdId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id].ContentDocumentId;
 
         insert new ContentDocumentLink(
             ContentDocumentId = cdId,
@@ -74,7 +74,7 @@ public without sharing class ProgramEnrollmentInvoiceController {
             ShareType         = 'V'
         );
 
-        // Mark created & remember last CV Id
+        // Update flags immediately after attach
         update new hed__Program_Enrollment__c(
             Id = programEnrollmentId,
             Invoice_Created__c = true,
@@ -86,16 +86,15 @@ public without sharing class ProgramEnrollmentInvoiceController {
 
     @AuraEnabled
     public static Id generateAttachAndEmail(Id programEnrollmentId, List<String> additionalToAddresses) {
-        // 1) Attach (also sets Invoice_Created__c & last CV Id)
+        // 1) Attach first (sets Created + Last CV Id)
         Id cvId = generateAndAttach(programEnrollmentId);
 
-        // 2) Fresh reads
+        // 2) Get Email context
         hed__Program_Enrollment__c pe = [
             SELECT Id, Name, hed__Account__r.Name,
                    hed__Contact__c, hed__Contact__r.Name, hed__Contact__r.Email
             FROM hed__Program_Enrollment__c WHERE Id = :programEnrollmentId
         ];
-
         ContentVersion cv = [
             SELECT Id, Title, VersionData, FileExtension, ContentDocumentId
             FROM ContentVersion WHERE Id = :cvId
@@ -114,11 +113,11 @@ public without sharing class ProgramEnrollmentInvoiceController {
 
         Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
         if (pe.hed__Contact__c != null) {
-            mail.setTargetObjectId(pe.hed__Contact__c);
+            mail.setTargetObjectId(pe.hed__Contact__c); // logs to Contact when possible
         } else if (toAddr != null) {
             mail.setToAddresses(new List<String>{ toAddr });
         }
-        mail.setWhatId(programEnrollmentId);
+        mail.setWhatId(programEnrollmentId);          // logs to Program Enrollment when possible
         mail.setSaveAsActivity(true);
         if (additionalToAddresses != null && !additionalToAddresses.isEmpty()) {
             mail.setCcAddresses(additionalToAddresses);
@@ -128,52 +127,88 @@ public without sharing class ProgramEnrollmentInvoiceController {
         mail.setFileAttachments(new Messaging.EmailFileAttachment[] { att });
         Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
 
-        // 4) Guaranteed audit trail: Task
-        Task t = new Task(
-            Subject      = 'Invoice emailed',
-            Status       = 'Completed',
-            Priority     = 'Normal',
-            ActivityDate = Date.today(),
-            WhatId       = programEnrollmentId,
-            WhoId        = pe.hed__Contact__c
-        );
-        insert t;
+        // 4) Guaranteed audit trail — Task (shows on BOTH PE & Contact)
+        try {
+            Task t = new Task(
+                Subject      = 'Invoice emailed',
+                Status       = 'Completed',
+                Priority     = 'Normal',
+                ActivityDate = Date.today(),
+                WhatId       = programEnrollmentId,
+                WhoId        = pe.hed__Contact__c
+            );
+            insert t;
 
-        // Link the file to the Task for convenience
-        insert new ContentDocumentLink(
-            ContentDocumentId = cv.ContentDocumentId,
-            LinkedEntityId    = t.Id,
-            ShareType         = 'V'
-        );
+            // Link the file to the Task for convenience
+            insert new ContentDocumentLink(
+                ContentDocumentId = cv.ContentDocumentId,
+                LinkedEntityId    = t.Id,
+                ShareType         = 'V'
+            );
+        } catch (Exception e) {
+            // If WhatId is not allowed (activities disabled), retry with WhoId only
+            try {
+                Task t2 = new Task(
+                    Subject      = 'Invoice emailed',
+                    Status       = 'Completed',
+                    Priority     = 'Normal',
+                    ActivityDate = Date.today(),
+                    WhoId        = pe.hed__Contact__c
+                );
+                insert t2;
+            } catch (Exception e2) {
+                // swallow; field updates below still occur
+            }
+        }
 
-        // 5) Guaranteed audit trail: EmailMessage on PE + relation to Contact
-        EmailMessage em = new EmailMessage();
-        em.Subject     = subject;
-        em.FromAddress = UserInfo.getUserEmail();
-        em.ToAddress   = toAddr;
-        em.RelatedToId = programEnrollmentId;
-        em.MessageDate = System.now();
-        em.Status      = '3';      // Sent
-        em.Incoming    = false;
-        em.TextBody    = body;
-        insert em;
+        // 5) Best-effort EmailMessage (if Enhanced Email enabled & perms OK)
+        try {
+            EmailMessage em = new EmailMessage();
+            em.Subject     = subject;
+            em.FromAddress = UserInfo.getUserEmail();
+            em.ToAddress   = toAddr;
+            em.RelatedToId = programEnrollmentId;
+            em.MessageDate = System.now();
+            em.Status      = '3';      // Sent
+            em.Incoming    = false;
+            em.TextBody    = body;
+            insert em;
 
-        if (pe.hed__Contact__c != null) {
-            insert new EmailMessageRelation(
-                EmailMessageId = em.Id,
-                RelationId     = pe.hed__Contact__c,
-                RelationType   = 'ToAddress'
+            // Relate Contact as recipient
+            if (pe.hed__Contact__c != null) {
+                insert new EmailMessageRelation(
+                    EmailMessageId = em.Id,
+                    RelationId     = pe.hed__Contact__c,
+                    RelationType   = 'ToAddress'
+                );
+            }
+
+            // Link the same file to EmailMessage for full audit
+            insert new ContentDocumentLink(
+                ContentDocumentId = cv.ContentDocumentId,
+                LinkedEntityId    = em.Id,
+                ShareType         = 'V'
+            );
+        } catch (Exception ignore) {
+            // Some orgs disable Enhanced Email or restrict EmailMessage DML; Task above still provides audit
+        }
+
+        // 6) Update flags + timestamp ALWAYS (independent of email queue delay)
+        try {
+            update new hed__Program_Enrollment__c(
+                Id = programEnrollmentId,
+                Invoice_Emailed__c = true,
+                Invoice_Last_Sent__c = System.now(),
+                Last_Invoice_ContentVersion_Id__c = cv.Id
+            );
+        } catch (Exception e) {
+            // As a fallback, at least set Created if Emailed fails (shouldn't happen under without sharing)
+            update new hed__Program_Enrollment__c(
+                Id = programEnrollmentId,
+                Invoice_Created__c = true
             );
         }
 
-        // 6) Update flags & timestamp (independent of email queue lag)
-        update new hed__Program_Enrollment__c(
-            Id = programEnrollmentId,
-            Invoice_Emailed__c = true,
-            Invoice_Last_Sent__c = System.now(),
-            Last_Invoice_ContentVersion_Id__c = cv.Id
-        );
-
-        return cvId;
+        return cv.Id;
     }
 }

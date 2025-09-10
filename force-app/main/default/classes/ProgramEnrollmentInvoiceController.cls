@@ -51,18 +51,38 @@ public without sharing class ProgramEnrollmentInvoiceController {
         total = (subtotal + taxAmount).setScale(2);
     }
 
+    // ----- Attach-only helper: now builds a readable Title -----
     @AuraEnabled
     public static Id generateAndAttach(Id programEnrollmentId) {
+        // Build PDF
         PageReference p = Page.ProgramEnrollmentInvoicePDF;
         p.getParameters().put('id', (String)programEnrollmentId);
         Blob pdf = Test.isRunningTest() ? Blob.valueOf('fake pdf') : p.getContentAsPDF();
 
-        String title = 'Invoice_' + String.valueOf(programEnrollmentId).right(6);
+        // Query minimal data for title
+        hed__Program_Enrollment__c pe = [
+            SELECT Id, Name, hed__Contact__r.Name
+            FROM hed__Program_Enrollment__c
+            WHERE Id = :programEnrollmentId
+            LIMIT 1
+        ];
+
+        // Compose a clean, searchable Title: Invoice_StudentName_PEName_YYYY_MM_DD
+        String student   = (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student');
+        String peName    = (pe.Name != null ? pe.Name : 'ProgramEnrollment');
+        // Clean unsafe characters -> underscore
+        student = student.replaceAll('[^A-Za-z0-9]+','_');
+        peName  = peName.replaceAll('[^A-Za-z0-9]+','_');
+        String datePart  = Datetime.now().format('yyyy_MM_dd');
+        String title     = 'Invoice_' + student + '_' + peName + '_' + datePart;
+        if (title.length() > 240) title = title.substring(0,240); // safety margin under 255
+
+        // Create file
         ContentVersion cv = new ContentVersion(
-            Title = title,
+            Title        = title,
             PathOnClient = title + '.pdf',
-            VersionData = pdf,
-            Origin = 'H'
+            VersionData  = pdf,
+            Origin       = 'H'
         );
         insert cv;
 
@@ -84,12 +104,13 @@ public without sharing class ProgramEnrollmentInvoiceController {
         return cv.Id;
     }
 
+    // ----- Full flow: attach + email + logs + field updates -----
     @AuraEnabled
     public static Id generateAttachAndEmail(Id programEnrollmentId, List<String> additionalToAddresses) {
-        // 1) Attach first (sets Created + last CV Id)
+        // 1) Attach (also sets Created + Last CV Id)
         Id cvId = generateAndAttach(programEnrollmentId);
 
-        // 2) Email context
+        // 2) Fresh reads
         hed__Program_Enrollment__c pe = [
             SELECT Id, Name, hed__Account__r.Name,
                    hed__Contact__c, hed__Contact__r.Name, hed__Contact__r.Email
@@ -105,7 +126,7 @@ public without sharing class ProgramEnrollmentInvoiceController {
         String body    = 'Hello ' + (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student') +
                          ',\n\nAttached is your invoice for the program enrollment. Thank you.\n\nStudent Services';
 
-        // 3) Submit email
+        // 3) Send email
         Messaging.EmailFileAttachment att = new Messaging.EmailFileAttachment();
         att.setFileName(cv.Title + '.' + cv.FileExtension);
         att.setInline(false);
@@ -113,11 +134,11 @@ public without sharing class ProgramEnrollmentInvoiceController {
 
         Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
         if (pe.hed__Contact__c != null) {
-            mail.setTargetObjectId(pe.hed__Contact__c);   // activity on Contact
+            mail.setTargetObjectId(pe.hed__Contact__c);
         } else if (toAddr != null) {
             mail.setToAddresses(new List<String>{ toAddr });
         }
-        mail.setWhatId(programEnrollmentId);              // activity on Program Enrollment (when allowed)
+        mail.setWhatId(programEnrollmentId);
         mail.setSaveAsActivity(true);
         if (additionalToAddresses != null && !additionalToAddresses.isEmpty()) {
             mail.setCcAddresses(additionalToAddresses);
@@ -125,50 +146,17 @@ public without sharing class ProgramEnrollmentInvoiceController {
         mail.setSubject(subject);
         mail.setPlainTextBody(body);
         mail.setFileAttachments(new Messaging.EmailFileAttachment[] { att });
+        Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
 
-        Messaging.SendEmailResult[] results = Messaging.sendEmail(new Messaging.SingleEmailMessage[] { mail });
-        if (results == null || results.isEmpty() || !results[0].isSuccess()) {
-            // Surface the real cause so it can be fixed if needed
-            Messaging.SendEmailError[] errs = results != null && !results.isEmpty() ? results[0].getErrors() : null;
-            String msg = (errs != null && !errs.isEmpty()) ? errs[0].getMessage() : 'Unknown email error';
-            System.debug('EMAIL_SUBMIT_FAILED: ' + msg);
-        }
-
-        // 4) Guaranteed audit: Task on both PE (WhatId) and Contact (WhoId)
-        try {
-            Task t = new Task(
-                Subject='Invoice emailed', Status='Completed', Priority='Normal', ActivityDate=Date.today(),
-                WhatId=programEnrollmentId, WhoId=pe.hed__Contact__c
-            );
-            insert t;
-
-            insert new ContentDocumentLink(
-                ContentDocumentId = cv.ContentDocumentId,
-                LinkedEntityId    = t.Id,
-                ShareType         = 'V'
-            );
-        } catch (Exception exTask) {
-            // If activities disabled on PE, retry with WhoId only
-            try {
-                Task t2 = new Task(
-                    Subject='Invoice emailed', Status='Completed', Priority='Normal', ActivityDate=Date.today(),
-                    WhoId=pe.hed__Contact__c
-                );
-                insert t2;
-            } catch (Exception exTask2) {
-                System.debug('TASK_CREATE_FAILED: ' + exTask2.getMessage());
-            }
-        }
-
-        // 5) Best-effort EmailMessage (Enhanced Email)
+        // 4) Best-effort EmailMessage audit (Enhanced Email)
         try {
             EmailMessage em = new EmailMessage();
             em.Subject     = subject;
             em.FromAddress = UserInfo.getUserEmail();
             em.ToAddress   = toAddr;
-            em.RelatedToId = programEnrollmentId; // shows on PE
+            em.RelatedToId = programEnrollmentId;
             em.MessageDate = System.now();
-            em.Status      = '3';  // Sent
+            em.Status      = '3';
             em.Incoming    = false;
             em.TextBody    = body;
             insert em;
@@ -186,11 +174,11 @@ public without sharing class ProgramEnrollmentInvoiceController {
                 LinkedEntityId    = em.Id,
                 ShareType         = 'V'
             );
-        } catch (Exception exEm){
-            System.debug('EMAIL_MESSAGE_CREATE_SKIPPED: ' + exEm.getMessage());
+        } catch (Exception ignore) {
+            System.debug('EMAIL_MESSAGE_CREATE_SKIPPED: ' + ignore.getMessage());
         }
 
-        // 6) Update sent flags + timestamp (independent of queue lag)
+        // 5) Update sent flags + timestamp
         update new hed__Program_Enrollment__c(
             Id = programEnrollmentId,
             Invoice_Emailed__c = true,

@@ -46,7 +46,6 @@
   </table>
 
   <!-- Lines -->
-  <h3>Course Connections</h3>
   <table width="100%" border="1" cellspacing="0" cellpadding="4">
     <tr>
       <th align="left">Course Connection ID</th>
@@ -54,7 +53,6 @@
       <th align="left">Term</th>
       <th align="left">Course Start</th>
       <th align="left">Status</th>
-      <th align="left">Role</th>
       <th align="right">Course Fee</th>
     </tr>
     <apex:repeat value="{!lines}" var="l">
@@ -108,8 +106,6 @@
     </tr>
   </table>
 
-  <div class="small" style="margin-top:16px;">Thank you for your registration.</div>
-
   <div class="hr"></div>
 
   <!-- Footer with clickable links -->
@@ -126,16 +122,19 @@
     </p>
 
     <div class="section">
-      <b>Enrollment deadlines:</b>
-      <table class="tight">
-        <tr><td>Fall:</td><td>Aug 1</td></tr>
-        <tr><td>Winter:</td><td>Dec 1</td></tr>
-        <tr><td>Spring:</td><td>March 1</td></tr>
-      </table>
-    </div>
+      <b><p style="margin-top:10px; font-weight:bold;">Enrollment deadlines:</p>
+<table style="width:100%; border:0; border-collapse:collapse; font-size:10px;">
+  <tr>
+    <td style="width:50%; padding:2px 0;">Fall: Aug 1</td>
+    <td style="width:50%; padding:2px 0;">Winter: Dec 1</td>
+  </tr>
+  <tr>
+    <td style="width:50%; padding:2px 0;">Spring: March 1</td>
+    <td style="width:50%; padding:2px 0;">&nbsp;</td>
+  </tr>
+</table>
 
-    <div class="section">
-      <b>Accepted forms of Payment:</b>
+Accepted forms of Payment:</b>
       <ul>
         <li>
           For a UCSF fund, if the required information was not previously entered on the registration form, please send
@@ -181,3 +180,4 @@
     </p>
   </div>
 </apex:page>
+

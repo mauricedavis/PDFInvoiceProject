@@ -46,11 +46,19 @@
                 first-served basis and many courses tend to fill ahead of the registration deadline.
             </p>
 
-            <p><b>Enrollment deadlines:</b><br/>
-                Fall: Aug 1 &nbsp;&nbsp; Winter: Dec 1 &nbsp;&nbsp; Spring: Mar 1
-            </p>
-
-            <p><b>Accepted forms of Payment:</b></p>
+            <p><b>Enrollment deadlines:
+<table style="width:100%; border:0; margin-top:4px;">
+  <tr>
+    <td>Fall: Aug 1</td>
+    <td>Winter: Dec 1</td>
+  </tr>
+  <tr>
+    <td>Spring: Mar 1</td>
+    <td>&nbsp;</td>
+  </tr>
+</table>
+<br/>
+Accepted forms of Payment:</b></p>
             <ul>
                 <li>For UCSF fund payments, send chartstring/speedtype to <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.</li>
                 <li>Credit Card (Visa/MasterCard): 

@@ -1,7 +1,9 @@
 public with sharing class ProgramEnrollmentInvoiceController {
     @AuraEnabled
     public static Id generateAttachAndEmail(Id peId, List<String> recipients) {
-        hed__Program_Enrollment__c pe = [
+        hed__Program_Enrollment__c pe = [ 
+            progEnroll = pe; 
+            
             SELECT Id, Name, hed__Contact__r.Name, CreatedDate
             FROM hed__Program_Enrollment__c
             WHERE Id = :peId

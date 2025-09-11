@@ -30,11 +30,11 @@
                 </tr>
                 <apex:repeat value="{!CourseConnections}" var="cc">
                     <tr>
-                        <td>{!cc.Name}</td>
-                        <td>{!cc.Course__r.Name}</td>
-                        <td>{!cc.Term__c}</td>
-                        <td>{!cc.Start_Date__c}</td>
-                        <td>{!cc.Status__c}</td>
+                        <td style="width:50%">{!cc.Name}</td>
+                        <td style="width:50%">{!cc.Course__r.Name}</td>
+                        <td style="width:50%">{!cc.Term__c}</td>
+                        <td style="width:50%">{!cc.Start_Date__c}</td>
+                        <td style="width:50%">{!cc.Status__c}</td>
                         <td>${!TEXT(cc.Course_Fee__c,"#,###.00")}</td>
                     </tr>
                 </apex:repeat>

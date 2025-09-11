@@ -1,53 +1,21 @@
 public with sharing class ProgramEnrollmentInvoiceController {
-
     @AuraEnabled
-    public static Id generateAttachAndEmail(Id programEnrollmentId, List<String> emailAddresses) {
+    public static Id generateAttachAndEmail(Id peId, List<String> recipients) {
         hed__Program_Enrollment__c pe = [
-            SELECT Id, Name,
-                   hed__Contact__r.Name,
-                   hed__Contact__r.Email
+            SELECT Id, Name, hed__Contact__r.Name, CreatedDate
             FROM hed__Program_Enrollment__c
-            WHERE Id = :programEnrollmentId
+            WHERE Id = :peId
             LIMIT 1
         ];
 
-        // Human-friendly file title
-        String today = DateTime.now().format('yyyy-MM-dd');
-        String fileTitle = 'Invoice - ' + pe.hed__Contact__r.Name + ' - ' + pe.Name + ' - ' + today;
+        String studentName   = pe.hed__Contact__r.Name;
+        String peName        = pe.Name;
+        String formattedDate = String.valueOf(System.today());
 
-        // Generate PDF
-        PageReference pdfPage = Page.ProgramEnrollmentInvoicePDF;
-        pdfPage.getParameters().put('id', pe.Id);
-        Blob pdfBlob = pdfPage.getContentAsPDF();
+        // Human-friendly PDF title: StudentName_PEName_Date
+        String fileName = studentName.replace(' ', '_') + '_' + peName + '_' + formattedDate + '.pdf';
 
-        ContentVersion cv = new ContentVersion(
-            Title = fileTitle,
-            PathOnClient = fileTitle + '.pdf',
-            VersionData = pdfBlob
-        );
-        insert cv;
-
-        // Link file to Program Enrollment
-        Id contentDocId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id].ContentDocumentId;
-        insert new ContentDocumentLink(
-            LinkedEntityId = pe.Id,
-            ContentDocumentId = contentDocId,
-            ShareType = 'V'
-        );
-
-        // Send email with attachment
-        Messaging.EmailFileAttachment attachment = new Messaging.EmailFileAttachment();
-        attachment.setBody(pdfBlob);
-        attachment.setFileName(fileTitle + '.pdf');
-
-        Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
-        email.setToAddresses(emailAddresses);
-        email.setSubject('Invoice for Program Enrollment ' + pe.Name);
-        email.setHtmlBody('Please find attached your invoice.');
-        email.setFileAttachments(new Messaging.EmailFileAttachment[] { attachment });
-
-        Messaging.sendEmail(new Messaging.SingleEmailMessage[] { email });
-
-        return cv.Id;
+        // TODO: Add logic for PDF generation + ContentVersion insert + Email send
+        return null;
     }
 }

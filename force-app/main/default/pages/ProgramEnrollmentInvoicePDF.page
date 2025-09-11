@@ -1,185 +1,77 @@
-<apex:page controller="ProgramEnrollmentInvoiceController"
-           renderAs="pdf" showHeader="false" applyBodyTag="false">
-  <style>
-    body, table { font-family: Helvetica, Arial, sans-serif; font-size:11px; line-height:1.45; }
-    th { background:#f4f6f9; }
-    h2 { margin:0 0 4px 0; }
-    h3 { margin:14px 0 6px; }
-    .small { font-size:10px; }
-    .muted { color:#555; }
-    .section { margin-top:18px; }
-    .hr { border-top:1px solid #ddd; margin:16px 0; }
-    .tight td { padding:2px 0; }
+<apex:page renderAs="pdf" controller="ProgramEnrollmentInvoiceController">
+    <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 11pt; }
+                h1 { font-size: 14pt; font-weight: bold; margin-bottom: 10px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                a { color: blue; text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>Invoice - {!ProgramEnrollment.Name}</h1>
+            <p>
+                <b>Student:</b> {!ProgramEnrollment.hed__Contact__r.Name}<br/>
+                <b>Program:</b> {!ProgramEnrollment.Program__c}<br/>
+                <b>Enrollment Status:</b> {!ProgramEnrollment.Enrollment_Status__c}<br/>
+                <b>Date:</b> {!TODAY()}
+            </p>
 
-    /* Make links look like classic hyperlinks in PDFs */
-    a, a:link, a:visited {
-      color: #0a66c2;
-      text-decoration: underline;
-    }
-  </style>
+            <table>
+                <tr>
+                    <th>Course Connection ID</th>
+                    <th>Course Name</th>
+                    <th>Term</th>
+                    <th>Course Start</th>
+                    <th>Status</th>
+                    <th>Course Fee</th>
+                </tr>
+                <apex:repeat value="{!CourseConnections}" var="cc">
+                    <tr>
+                        <td>{!cc.Name}</td>
+                        <td>{!cc.Course__r.Name}</td>
+                        <td>{!cc.Term__c}</td>
+                        <td>{!cc.Start_Date__c}</td>
+                        <td>{!cc.Status__c}</td>
+                        <td>${!TEXT(cc.Course_Fee__c,"#,###.00")}</td>
+                    </tr>
+                </apex:repeat>
+            </table>
 
-  <apex:variable var="pe" value="{!progEnroll}"/>
+            <p style="margin-top:15px;">
+                Enrollment is confirmed once payment is received. Courses may be paid for in advance or on a term-by-term basis. 
+                Courses paid in advance will not be subject to future enrollment fee increases. Courses fill on a first-come, 
+                first-served basis and many courses tend to fill ahead of the registration deadline.
+            </p>
 
-  <!-- Header -->
-  <table width="100%">
-    <tr>
-      <td>
-        <h2>Invoice - {!pe.Name}</h2>
-        <div>Student: {!pe.hed__Contact__r.Name}</div>
-        <div>Program: {!pe.hed__Account__r.Name}</div>
-        <div>Enrollment Status: {!pe.hed__Enrollment_Status__c}</div>
-        <div>
-          Date:
-          <apex:outputText value="{0,date,MMMM d, yyyy}">
-            <apex:param value="{!NOW()}"/>
-          </apex:outputText>
-        </div>
-      </td>
-      <td align="right">
-        <img src="{!URLFOR($Resource.ImplemenationScienceLogo)}" width="180"/>
-        <div class="small" style="margin-top:4px; text-align:right;">
-          Implementation Science Training Program<br/>
-          University of California San Francisco
-        </div>
-      </td>
-    </tr>
-  </table>
+            <p><b>Enrollment deadlines:</b><br/>
+                Fall: Aug 1 &nbsp;&nbsp; Winter: Dec 1 &nbsp;&nbsp; Spring: Mar 1
+            </p>
 
-  <!-- Lines -->
-  <table width="100%" border="1" cellspacing="0" cellpadding="4">
-    <tr>
-      <th align="left">Course Connection ID</th>
-      <th align="left">Course Name</th>
-      <th align="left">Term</th>
-      <th align="left">Course Start</th>
-      <th align="left">Status</th>
-      <th align="right">Course Fee</th>
-    </tr>
-    <apex:repeat value="{!lines}" var="l">
-      <tr>
-        <td>{!l.Name}</td>
-        <td>{!l.hed__Course_Offering__r.hed__Course__r.Name}</td>
-        <td>{!l.Term_Name__c}</td>
-        <td>
-          <apex:outputText value="{0,date,MMM d, yyyy}">
-            <apex:param value="{!l.hed__Course_Offering__r.hed__Start_Date__c}"/>
-          </apex:outputText>
-        </td>
-        <td>{!l.hed__Status__c}</td>
-        <td>{!l.Role__c}</td>
-        <td align="right">
-          <apex:outputText value="{0,number,$#,##0.00}">
-            <apex:param value="{!l.Course_Fee__c}"/>
-          </apex:outputText>
-        </td>
-      </tr>
-    </apex:repeat>
-    <tr>
-      <td colspan="6" align="right"><b>Subtotal</b></td>
-      <td align="right">
-        <b>
-          <apex:outputText value="{0,number,$#,##0.00}">
-            <apex:param value="{!subtotal}"/>
-          </apex:outputText>
-        </b>
-      </td>
-    </tr>
-    <apex:outputPanel rendered="{!taxAmount != null && taxAmount != 0}">
-      <tr>
-        <td colspan="6" align="right">Tax</td>
-        <td align="right">
-          <apex:outputText value="{0,number,$#,##0.00}">
-            <apex:param value="{!taxAmount}"/>
-          </apex:outputText>
-        </td>
-      </tr>
-    </apex:outputPanel>
-    <tr>
-      <td colspan="6" align="right"><b>Total</b></td>
-      <td align="right">
-        <b>
-          <apex:outputText value="{0,number,$#,##0.00}">
-            <apex:param value="{!total}"/>
-          </apex:outputText>
-        </b>
-      </td>
-    </tr>
-  </table>
+            <p><b>Accepted forms of Payment:</b></p>
+            <ul>
+                <li>For UCSF fund payments, send chartstring/speedtype to <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.</li>
+                <li>Credit Card (Visa/MasterCard): 
+                    <a href="https://secure.payconex.net/paymentpage/enhanced/index.php?action=view&aid=120615635381&id=140324">
+                        Payment Portal
+                    </a>
+                </li>
+                <li>Electronic Wire: email confirmation with learner + course to 
+                    <a href="mailto:Online-Education@ucsf.edu">Online-Education@ucsf.edu</a> and 
+                    <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.
+                </li>
+            </ul>
 
-  <div class="hr"></div>
-
-  <!-- Footer with clickable links -->
-  <div>
-    <h3>Enrollment &amp; Payment Information</h3>
-
-    <p>
-      Enrollment is confirmed once payment is received. Courses may be paid for in advance or on a term-by-term basis.
-      Courses paid in advance will not be subject to future enrollment fee increases. Courses fill on a first-come,
-      first-served basis and many courses tend to fill ahead of the registration deadline (below). If payment is
-      received after a course has filled, the learner will be added to the waitlist and notified. If a seat in that
-      course does not become available, the learner may choose to receive a full refund for that course or to be
-      enrolled in another course.
-    </p>
-
-    <div class="section">
-      <b><p style="margin-top:10px; font-weight:bold;"><p style="margin-top:10px; font-weight:bold;">Enrollment deadlines:</p>
-<table style="width:100%; border:0; border-collapse:collapse; font-size:10px;">
-  <tr>
-    <td style="width:50%; padding:2px 0;">Fall: Aug 1</td>
-    <td style="width:50%; padding:2px 0;">Winter: Dec 1</td>
-  </tr>
-  <tr>
-    <td style="width:50%; padding:2px 0;">Spring: March 1</td>
-    <td style="width:50%; padding:2px 0;">&nbsp;</td>
-  </tr>
-</table>
-
-Accepted forms of Payment:</b>
-      <ul>
-        <li>
-          For a UCSF fund, if the required information was not previously entered on the registration form, please send
-          the chartstring or speedtype to
-          <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.
-        </li>
-        <li>
-          For credit card payments (Visa/Mastercard), please visit:<br/>
-          <a href="https://secure.payconex.net/paymentpage/enhanced/index.php?action=view&amp;aid=120615635381&amp;id=140324">
-            UCSF Secure Credit Card Payment Portal
-          </a>
-        </li>
-        <li>
-          For electronic wire transfer, please attach the wire confirmation to an email. Include the learner’s name and
-          course number(s) and send to both
-          <a href="mailto:Online-Education@ucsf.edu">Online-Education@ucsf.edu</a>
-          and
-          <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.
-        </li>
-      </ul>
-    </div>
-
-    <div class="section">
-      <table class="tight">
-        <tr><td><b>ABA Routing No for Wires</b></td><td>026009593</td></tr>
-        <tr><td><b>SWIFT Code (international)</b></td><td>BOFAUS3N</td></tr>
-        <tr><td><b>ACH - ABA Routing (ACH payments)</b></td><td>121000358</td></tr>
-        <tr><td><b>SWIFT Code</b></td><td>Not applicable</td></tr>
-      </table>
-    </div>
-
-    <div class="section">
-      <b>Bank and Bank Address:</b><br/>
-      Bank of America<br/>
-      2000 Clayton Road<br/>
-      Concord, CA 94520
-    </div>
-
-    <p class="section">
-      Please email
-      <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>
-      with questions regarding payment.
-    </p>
-  </div>
+            <p><b>Bank Information:</b><br/>
+                Bank of America<br/>
+                2000 Clayton Road<br/>
+                Concord, CA 94520<br/>
+                ABA Routing (Wire): 026009593<br/>
+                SWIFT (International Wires): BOFAUS3N<br/>
+                ACH Routing: 121000358
+            </p>
+        </body>
+    </html>
 </apex:page>
-
-
-

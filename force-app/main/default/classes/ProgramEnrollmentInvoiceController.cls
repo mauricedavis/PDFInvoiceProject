@@ -11,11 +11,11 @@ public with sharing class ProgramEnrollmentInvoiceController {
             LIMIT 1
         ];
 
-        // Create a "friendly" title for the invoice PDF
-        String today = Date.today().format('yyyy-MM-dd');
+        // Human-friendly file title
+        String today = DateTime.now().format('yyyy-MM-dd');
         String fileTitle = 'Invoice - ' + pe.hed__Contact__r.Name + ' - ' + pe.Name + ' - ' + today;
 
-        // Generate the PDF
+        // Generate PDF
         PageReference pdfPage = Page.ProgramEnrollmentInvoicePDF;
         pdfPage.getParameters().put('id', pe.Id);
         Blob pdfBlob = pdfPage.getContentAsPDF();
@@ -35,17 +35,17 @@ public with sharing class ProgramEnrollmentInvoiceController {
             ShareType = 'V'
         );
 
-        // Send email
+        // Send email with attachment
+        Messaging.EmailFileAttachment attachment = new Messaging.EmailFileAttachment();
+        attachment.setBody(pdfBlob);
+        attachment.setFileName(fileTitle + '.pdf');
+
         Messaging.SingleEmailMessage email = new Messaging.SingleEmailMessage();
         email.setToAddresses(emailAddresses);
         email.setSubject('Invoice for Program Enrollment ' + pe.Name);
         email.setHtmlBody('Please find attached your invoice.');
-        email.setFileAttachments(new Messaging.EmailFileAttachment[] {
-            new Messaging.EmailFileAttachment(
-                Body = pdfBlob,
-                FileName = fileTitle + '.pdf'
-            )
-        });
+        email.setFileAttachments(new Messaging.EmailFileAttachment[] { attachment });
+
         Messaging.sendEmail(new Messaging.SingleEmailMessage[] { email });
 
         return cv.Id;

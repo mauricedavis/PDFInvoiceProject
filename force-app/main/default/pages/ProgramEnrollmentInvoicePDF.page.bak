@@ -1,0 +1,85 @@
+<apex:page renderAs="pdf" controller="ProgramEnrollmentInvoiceController">
+    <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 11pt; }
+                h1 { font-size: 14pt; font-weight: bold; margin-bottom: 10px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #000; padding: 6px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                a { color: blue; text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>Invoice - {!ProgramEnrollment.Name}</h1>
+            <p>
+                <b>Student:</b> {!ProgramEnrollment.hed__Contact__r.Name}<br/>
+                <b>Program:</b> {!ProgramEnrollment.Program__c}<br/>
+                <b>Enrollment Status:</b> {!ProgramEnrollment.Enrollment_Status__c}<br/>
+                <b>Date:</b> {!TODAY()}
+            </p>
+
+            <table>
+                <tr>
+                    <th>Course Connection ID</th>
+                    <th>Course Name</th>
+                    <th>Term</th>
+                    <th>Course Start</th>
+                    <th>Status</th>
+                    <th>Course Fee</th>
+                </tr>
+                <apex:repeat value="{!CourseConnections}" var="cc">
+                    <tr>
+                        <td style="width:50%">{!cc.Name}</td>
+                        <td style="width:50%">{!cc.Course__r.Name}</td>
+                        <td style="width:50%">{!cc.Term__c}</td>
+                        <td style="width:50%">{!cc.Start_Date__c}</td>
+                        <td style="width:50%">{!cc.Status__c}</td>
+                        <td>${!TEXT(cc.Course_Fee__c,"#,###.00")}</td>
+                    </tr>
+                </apex:repeat>
+            </table>
+
+            <p style="margin-top:15px;">
+                Enrollment is confirmed once payment is received. Courses may be paid for in advance or on a term-by-term basis. 
+                Courses paid in advance will not be subject to future enrollment fee increases. Courses fill on a first-come, 
+                first-served basis and many courses tend to fill ahead of the registration deadline.
+            </p>
+
+            <p><b>Enrollment deadlines:
+<table style="width:100%; border:0; margin-top:4px;">
+  <tr>
+    <td>Fall: Aug 1</td>
+    <td>Winter: Dec 1</td>
+  </tr>
+  <tr>
+    <td>Spring: Mar 1</td>
+    <td>&nbsp;</td>
+  </tr>
+</table>
+<br/>
+Accepted forms of Payment:</b></p>
+            <ul>
+                <li>For UCSF fund payments, send chartstring/speedtype to <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.</li>
+                <li>Credit Card (Visa/MasterCard): 
+                    <a href="https://secure.payconex.net/paymentpage/enhanced/index.php?action=view&aid=120615635381&id=140324">
+                        Payment Portal
+                    </a>
+                </li>
+                <li>Electronic Wire: email confirmation with learner + course to 
+                    <a href="mailto:Online-Education@ucsf.edu">Online-Education@ucsf.edu</a> and 
+                    <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.
+                </li>
+            </ul>
+
+            <p><b>Bank Information:</b><br/>
+                Bank of America<br/>
+                2000 Clayton Road<br/>
+                Concord, CA 94520<br/>
+                ABA Routing (Wire): 026009593<br/>
+                SWIFT (International Wires): BOFAUS3N<br/>
+                ACH Routing: 121000358
+            </p>
+        </body>
+    </html>
+</apex:page>

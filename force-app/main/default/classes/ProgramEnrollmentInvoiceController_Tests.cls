@@ -23,17 +23,17 @@ private class ProgramEnrollmentInvoiceController_Tests {
         );
         insert pe;
 
-        // Term (some orgs require hed__Account__c)
+        // Term
         hed__Term__c term = new hed__Term__c(Name='Spring 2028');
         putProgramOnIfFieldExists(term, program.Id);
         insert term;
 
-        // Course (some orgs require hed__Account__c)
+        // Course
         hed__Course__c course = new hed__Course__c(Name='IMS241 Study Designs');
         putProgramOnIfFieldExists(course, program.Id);
         insert course;
 
-        // Offering (some orgs require hed__Account__c)
+        // Offering
         hed__Course_Offering__c offering = new hed__Course_Offering__c(
             Name='IMS241 Spring 2028',
             hed__Course__c = course.Id,
@@ -43,7 +43,7 @@ private class ProgramEnrollmentInvoiceController_Tests {
         putProgramOnIfFieldExists(offering, program.Id);
         insert offering;
 
-        // Course Connection (do not set formula fields)
+        // Course Connection
         hed__Course_Enrollment__c ce = new hed__Course_Enrollment__c(
             hed__Program_Enrollment__c = pe.Id,
             hed__Course_Offering__c   = offering.Id,

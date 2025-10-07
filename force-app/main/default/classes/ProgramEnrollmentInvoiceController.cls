@@ -124,7 +124,8 @@ public without sharing class ProgramEnrollmentInvoiceController {
         String toAddr  = (pe.hed__Contact__r != null) ? pe.hed__Contact__r.Email : null;
         String subject = 'Invoice – ' + pe.Name + ' (' + pe.hed__Account__r.Name + ')';
         String body    = 'Hello ' + (pe.hed__Contact__r != null ? pe.hed__Contact__r.Name : 'Student') +
-                         ',\n\nAttached is your invoice for the program enrollment. Thank you.\n\nStudent Services';
+                         ',\n\nAttached is your invoice for the program enrollment. \n\nThank you.\n' +
+						 'UCSF Implementation Science Training Program';
 
         // 3) Send email
         Messaging.EmailFileAttachment att = new Messaging.EmailFileAttachment();

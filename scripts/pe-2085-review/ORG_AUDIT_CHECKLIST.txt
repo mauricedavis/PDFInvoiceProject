@@ -1,0 +1,22 @@
+Org audit: deployments and Apex history (manual in Salesforce Setup)
+====================================================================
+
+Goal: Correlate PE-2085 (good) vs PE-2086 (first bad) with metadata changes ~2026-03-23 afternoon UTC.
+
+1) Setup → Environments → Deployment Status (or your release tool)
+   - Note deployments touching: Flows (Program Enrollment, Term Enrollment), Apex classes
+     ProgramEnrollmentStudentEmail, ProgramEnrollmentInvoiceQueueable, triggers on PE / Course / Term.
+
+2) Setup → Apex Classes
+   - Open ProgramEnrollmentStudentEmail → Version History (if enabled for your org).
+   - Repeat for ProgramEnrollmentInvoiceQueueable, ProgramEnrollmentInvoiceBatch.
+
+3) Setup → Process Automation → Flows
+   - Open relevant flows → View Versions / last modified date; compare to Mar 23, 2026.
+
+4) Setup → View Setup Audit Trail (or Event Monitoring if licensed)
+   - Filter around 2026-03-23 17:55 UTC (PE-2085) through 21:15 UTC (PE-2086).
+
+5) If student send still fails with data present (like PE-2090 pattern in FINDINGS.txt):
+   - Debug Logs: filter on USER_DEBUG for the automation user running the queueable.
+   - Verify Org-Wide Email Address: running user/profile allowed to use the address used in code.

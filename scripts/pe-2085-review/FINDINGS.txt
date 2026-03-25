@@ -1,0 +1,66 @@
+PE-2085 vs PE-2086 vs PE-2090 — ucsf-prod SOQL review (executed via sf CLI)
+================================================================================
+
+Program Enrollments
+-------------------
+PE-2085  a0RPj000005a3FpMAI  Created 2026-03-23T17:55:08Z  Contact 003Pj000019PDnZIAW
+PE-2086  a0RPj000005a9rVMAQ  Created 2026-03-23T21:12:24Z  Contact 003Pj00000vkZ8QIAU
+PE-2090  a0RPj000005az25MAA  Created 2026-03-25T16:12:31Z  Contact 003Pj000019dBKUIA2
+
+EmailMessage (RelatedToId = PE)
+--------------------------------
+PE-2085:
+  - "Program Enrollment Confirmation - Online Certificate..." 
+    To: notetolaurabranagan+13@gmail.com  From: laura.branagan@ucsf.edu
+  - "New Program Enrollment submitted: PE-2085"
+    To: ImplementationScience@ucsf.edu     From: implementationscience@ucsf.edu
+
+PE-2086:
+  - ONLY "New Program Enrollment submitted: PE-2086" (office). NO student confirmation row.
+
+PE-2090:
+  - ONLY "New Program Enrollment submitted: PE-2090" (office). NO student confirmation row.
+
+PDFs linked to PE (ContentDocumentLink, FileType=PDF)
+-----------------------------------------------------
+PE-2085: Invoice_PE-2085 + Course Registration Responses (2 files — matches expectation)
+PE-2086: Invoice_PE-2086 only (1 file — no "responses" copy on PE)
+PE-2090: Invoice_PE-2090 only (1 file on PE)
+
+PDFs linked to Contact (ContentDocumentLink, FileType=PDF)
+-----------------------------------------------------------
+003Pj000019PDnZIAW (PE-2085): multiple PDFs including titles with "Course Registration"
+003Pj00000vkZ8QIAU (PE-2086): NONE — no ContentDocumentLink PDFs; no classic Attachments
+003Pj000019dBKUIA2 (PE-2090): "LBTestWed912am TestLB_Course Registration_.pdf"
+
+Contact Email (all populated)
+-----------------------------
+PE-2085 contact: notetolaurabranagan+13@gmail.com
+PE-2086 contact: alexandra.highet@ucsf.edu
+PE-2090 contact: notetolaurabranagan+15@gmail.com
+
+ContentDocument CreatedDate (PE-2090)
+-------------------------------------
+Invoice_PE-2090 and contact Course Registration PDF both CreatedDate 2026-03-25T16:12:36Z
+(5 seconds after PE CreatedDate). Both prerequisites existed almost immediately.
+
+Tasks on PE-2090
+----------------
+Only "Email: New Program Enrollment submitted: PE-2090" (office path). No student failure task
+(deploy diagnostic Tasks if not yet in org).
+
+Conclusions
+-----------
+1) PE-2086: Student confirmation did not send because ProgramEnrollmentStudentEmailQueueable
+   requires hasAnyResponsesPdf(Contact). This contact has NO response PDF in Files or Attachments.
+   Fix the FormAssembly / integration step that attaches the registration PDF to the Contact (or PE),
+   not an Apex "rollback" to PE-2085.
+
+2) PE-2090: Data prerequisites for the student email appear satisfied (invoice on PE, Course
+   Registration PDF on Contact, email present). Absence of EmailMessage suggests send never logged
+   success — investigate AsyncApexJob / debug logs for ProgramEnrollmentStudentEmailQueueable and
+   Messaging.sendEmail errors (e.g. OWEA access, limits). Sharing on ContentDocumentLink is another
+   possibility if the queueable running user cannot see the Contact file.
+
+3) PE-2085 student email used From laura.branagan@ucsf.edu (pre–Org-Wide Email Address on student
+   send). That aligns with timeline; OWEA alone does not explain missing Contact PDFs on PE-2086.

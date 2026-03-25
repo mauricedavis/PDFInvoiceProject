@@ -1,0 +1,237 @@
+<apex:page controller="ProgramEnrollmentInvoiceController"
+    renderAs="pdf"
+    applyHtmlTag="false"
+    showHeader="false"
+    standardStylesheets="false">
+
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .header-table {
+            width: 100%;
+            border: 1px solid #000;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+
+        .header-table td {
+            padding: 10px;
+        }
+
+        .header-left {
+            width: 30%;
+            border-right: 1px solid #000;
+            vertical-align: top;
+        }
+
+        .header-right {
+            width: 70%;
+            vertical-align: top;
+        }
+
+        .invoice-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 25px 0 10px 0;
+        }
+
+        /* Excel-like grid table */
+        table.invoice {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            margin-bottom: 30px;
+            border: 2px solid #000; /* stronger outer outline */
+            table-layout: fixed;
+        }
+
+        table.invoice th,
+        table.invoice td {
+            border: 1px solid #000; /* full grid */
+            padding: 8px 10px;
+            vertical-align: top;
+        }
+
+        table.invoice th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        table.invoice tr {
+            border-bottom: 1px solid #000;
+        }
+
+        .amount {
+            text-align: right;
+            font-family: monospace;
+            white-space: nowrap;
+        }
+
+        .total-row td {
+            font-weight: bold;
+        }
+
+        .section {
+            margin-top: 35px;
+        }
+
+        .spacer-lg {
+            height: 18px;
+        }
+
+        ul {
+            margin-top: 5px;
+            margin-left: 20px;
+        }
+    </style>
+
+    <!-- ================= HEADER ================= -->
+    <table class="header-table">
+        <tr>
+            <td class="header-left">
+                <img src="{!$Resource.ImplemenationScienceLogo}" width="140"/>
+            </td>
+            <td class="header-right">
+                <strong>University of California, San Francisco</strong><br/>
+                UCSF Implementation Science Training Program<br/>
+                <a href="mailto:ImplementationScience@ucsf.edu">
+                    ImplementationScience@ucsf.edu
+                </a><br/>
+                <a href="https://epibiostat.ucsf.edu/online-certificate-implementation-science">
+                    https://epibiostat.ucsf.edu/online-certificate-implementation-science
+                </a>
+            </td>
+        </tr>
+    </table>
+
+    <!-- ================= INVOICE HEADER ================= -->
+    <div class="invoice-title">
+        Invoice – {!programEnrollment.Name}
+    </div>
+
+    <p>
+        <strong>Student:</strong> {!programEnrollment.hed__Contact__r.Name}<br/>
+        <strong>Program:</strong> UCSF Implementation Science Training Program<br/>
+        <strong>Enrollment Status:</strong> {!programEnrollment.hed__Enrollment_Status__c}<br/>
+        <strong>Date:</strong>
+        <apex:outputText value="{0,date,EEE MMM d yyyy}">
+            <apex:param value="{!TODAY()}"/>
+        </apex:outputText>
+    </p>
+
+    <!-- ================= COURSE TABLE (inline styles — PDF engine often ignores &lt;style&gt; when applyHtmlTag=false) ================= -->
+    <table style="width:100%;border-collapse:collapse;border:2px solid #000;margin-top:16px;margin-bottom:36px;table-layout:fixed;">
+        <thead>
+            <tr>
+                <th style="width:18%;border:1px solid #000;padding:8px 10px;background-color:#f2f2f2;font-weight:bold;text-align:left;vertical-align:top;">Course Connection ID</th>
+                <th style="border:1px solid #000;padding:8px 10px;background-color:#f2f2f2;font-weight:bold;text-align:left;vertical-align:top;">Course Name</th>
+                <th style="width:15%;border:1px solid #000;padding:8px 10px;background-color:#f2f2f2;font-weight:bold;text-align:left;vertical-align:top;">Term</th>
+                <th style="width:18%;border:1px solid #000;padding:8px 10px;background-color:#f2f2f2;font-weight:bold;text-align:left;vertical-align:top;">Status</th>
+                <th style="width:15%;border:1px solid #000;padding:8px 10px;background-color:#f2f2f2;font-weight:bold;text-align:right;vertical-align:top;">Course Fee</th>
+            </tr>
+        </thead>
+        <tbody>
+            <apex:repeat value="{!courseEnrollments}" var="cc">
+                <tr>
+                    <td style="border:1px solid #000;padding:8px 10px;vertical-align:top;">{!cc.Name}</td>
+                    <td style="border:1px solid #000;padding:8px 10px;vertical-align:top;">{!cc.Course_Name__c}</td>
+                    <td style="border:1px solid #000;padding:8px 10px;vertical-align:top;">{!cc.Term_Name__c}</td>
+                    <td style="border:1px solid #000;padding:8px 10px;vertical-align:top;">{!cc.hed__Status__c}</td>
+                    <td style="border:1px solid #000;padding:8px 10px;text-align:right;vertical-align:top;font-family:monospace;white-space:nowrap;">
+                        <apex:outputText value="{0,number,$#,##0.00}">
+                            <apex:param value="{!cc.Course_Fee__c}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+            </apex:repeat>
+
+            <apex:outputPanel rendered="{!hasEnrollmentLateFee}">
+                <tr>
+                    <td colspan="4" style="border:1px solid #000;padding:8px 10px;text-align:right;font-weight:bold;vertical-align:top;">Enrollment Late Fee:</td>
+                    <td style="border:1px solid #000;padding:8px 10px;text-align:right;font-weight:bold;vertical-align:top;font-family:monospace;">
+                        <apex:outputText value="{0,number,$#,##0.00}">
+                            <apex:param value="{!programEnrollment.Enrollment_Late_Fee__c}"/>
+                        </apex:outputText>
+                    </td>
+                </tr>
+            </apex:outputPanel>
+
+            <tr>
+                <td colspan="4" style="border:1px solid #000;padding:8px 10px;text-align:right;font-weight:bold;vertical-align:top;">Total:</td>
+                <td style="border:1px solid #000;padding:8px 10px;text-align:right;font-weight:bold;vertical-align:top;font-family:monospace;">
+                    <apex:outputText value="{0,number,$#,##0.00}">
+                        <apex:param value="{!totalAmount}"/>
+                    </apex:outputText>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- ================= NOTES ================= -->
+    <div style="height:24px;line-height:24px;font-size:1px;">&nbsp;</div>
+    <div style="margin-top:8px;line-height:1.6;">
+        Enrollment is confirmed once payment is received. Courses may be paid
+        for in advance or on a term-by-term basis. Courses paid in advance
+        will not be subject to future enrollment fee increases. Courses fill
+        on a first-come, first-served basis and many courses tend to fill
+        ahead of the registration deadline.
+    </div>
+
+    <div style="height:28px;line-height:28px;font-size:1px;">&nbsp;</div>
+    <div style="margin-top:8px;line-height:1.6;">
+        <strong>Enrollment deadlines:</strong><br/>
+        Fall: August 15 &nbsp;&nbsp;
+        Winter: December 1 &nbsp;&nbsp;
+        Spring: March 1
+    </div>
+
+    <div style="height:28px;line-height:28px;font-size:1px;">&nbsp;</div>
+    <div style="margin-top:8px;line-height:1.6;">
+        <strong>Accepted forms of Payment:</strong>
+        <ul>
+            <li>
+                For UCSF fund payments, send chartstring/speedtype to
+                <a href="mailto:ImplementationScience@ucsf.edu">
+                    ImplementationScience@ucsf.edu
+                </a>
+            </li>
+            <li>
+                Credit Card (Visa/MasterCard):
+                <a href="https://secure.payconex.net/paymentpage/enhanced/index.php?action=view&aid=120615635381&id=140324">
+                    Payment Portal
+                </a>
+            </li>
+            <li>
+                Electronic Wire: email confirmation with learner + course to
+                <a href="mailto:Online-Education@ucsf.edu">Online-Education@ucsf.edu</a>
+                and
+                <a href="mailto:ImplementationScience@ucsf.edu">
+                    ImplementationScience@ucsf.edu
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <div style="height:28px;line-height:28px;font-size:1px;">&nbsp;</div>
+    <div style="margin-top:8px;line-height:1.6;">
+        <strong>Bank Information:</strong><br/>
+        Bank of America<br/>
+        2000 Clayton Road<br/>
+        Concord, CA 94520<br/>
+        ABA Routing (Wire): 026009593<br/>
+        SWIFT (International Wires): BOFAUS3N<br/>
+        ACH Routing: 121000358
+    </div>
+
+    <div style="margin-top:28px;line-height:1.6;">
+        Please send any questions to us at
+        <a href="mailto:ImplementationScience@ucsf.edu">
+            ImplementationScience@ucsf.edu
+        </a>. We look forward to working with you!
+    </div>
+</apex:page>

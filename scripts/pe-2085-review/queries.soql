@@ -1,0 +1,28 @@
+// Replace :peNames or Ids as needed. Run: sf data query -q "$(cat queries.soql)" -o ucsf-prod
+
+// 1) Resolve PE Ids by Name
+SELECT Id, Name, CreatedDate, hed__Contact__c
+FROM hed__Program_Enrollment__c
+WHERE Name IN ('PE-2085', 'PE-2086', 'PE-2090')
+ORDER BY Name;
+
+// 2) Email activity on those PEs (paste Ids from step 1)
+SELECT Id, Subject, MessageDate, ToAddress, FromAddress, RelatedToId
+FROM EmailMessage
+WHERE RelatedToId IN ('a0RPj000005a3FpMAI', 'a0RPj000005a9rVMAQ', 'a0RPj000005az25MAA')
+ORDER BY RelatedToId, MessageDate DESC;
+
+// 3) PDFs on PE
+SELECT LinkedEntityId, ContentDocument.Title, ContentDocument.FileType
+FROM ContentDocumentLink
+WHERE LinkedEntityId IN ('a0RPj000005a3FpMAI', 'a0RPj000005a9rVMAQ', 'a0RPj000005az25MAA')
+  AND ContentDocument.FileType = 'PDF';
+
+// 4) PDFs on Contacts (paste hed__Contact__c from step 1)
+SELECT LinkedEntityId, ContentDocument.Title
+FROM ContentDocumentLink
+WHERE LinkedEntityId IN ('003Pj000019PDnZIAW', '003Pj00000vkZ8QIAU', '003Pj000019dBKUIA2')
+  AND ContentDocument.FileType = 'PDF';
+
+// 5) Contact email
+SELECT Id, Email FROM Contact WHERE Id IN ('003Pj000019PDnZIAW', '003Pj00000vkZ8QIAU', '003Pj000019dBKUIA2');

@@ -1,0 +1,24 @@
+Rollback decision (after FINDINGS.txt review)
+=============================================
+
+Recommended: Do NOT treat "git or Apex rollback to PE-2085" as the primary fix.
+
+1) PE-2086 root cause: Missing FormAssembly / responses PDF on the Contact (and no second PDF on PE).
+   Action: Fix upstream integration or FormAssembly connector so the registration PDF is linked to the
+   Contact (or adjust Apex to accept the actual file location/title pattern your integration uses).
+
+2) PE-2090: Invoice + Contact PDF existed within seconds; student EmailMessage still missing.
+   Action: Inspect debug logs and AsyncApexJob for ProgramEnrollmentStudentEmailQueueable;
+   confirm OWEA permissions for the sending user; consider sharing if queueable user cannot read
+   ContentDocumentLink on Contact.
+
+3) Surgical OWEA removal (revert only setOrgWideEmailAddressId on student email):
+   Use ONLY if logs show send failures tied to OrgWideEmailAddress or you must restore
+   "From = running user" while investigating. It will not restore student email when Contact PDFs
+   are missing.
+
+4) Salesforce Apex Version History / changeset redeploy:
+   Use when you have a verified older artifact and logs show a regression in Apex (not data).
+
+5) Git baseline: After committing force-app (see repo history), future rollbacks can use git for
+   tracked metadata; org remains source of truth for what is live in production.

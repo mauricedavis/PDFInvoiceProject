@@ -1,0 +1,168 @@
+<apex:page controller="ProgramEnrollmentInvoiceController" 
+    showHeader="false" 
+    sidebar="false" 
+    applyHtmlTag="false" 
+    applyBodyTag="false"
+    cache="false">
+
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 12pt;
+            margin: 40px;
+        }
+        .header-table td {
+            vertical-align: top;
+        }
+        .logo {
+            width: 150px;
+        }
+        h1 {
+            font-size: 22pt;
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11pt;
+        }
+        th {
+            background: #f2f2f2;
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #000;
+        }
+        td {
+            padding: 8px;
+            border: 1px solid #000;
+            vertical-align: top;
+        }
+        .total-row td {
+            font-weight: bold;
+        }
+        .fee {
+            white-space: nowrap;
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- HEADER -->
+<table class="header-table" width="100%">
+    <tr>
+        <td width="160">
+            <img src="{!URLFOR($Resource.ImplemenationScienceLogo)}" class="logo" />
+        </td>
+        <td>
+            <strong>University of California, San Francisco</strong><br/>
+            UCSF Implementation Science Training Program<br/>
+            <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a><br/>
+            <a href="https://epibiostat.ucsf.edu/online-certificate-implementation-science">
+                https://epibiostat.ucsf.edu/online-certificate-implementation-science
+            </a>
+        </td>
+    </tr>
+</table>
+
+<h1>Invoice - {!programEnrollment.Name}</h1>
+
+<!-- STUDENT / PROGRAM INFO -->
+<p>
+    <strong>Student:</strong> {!programEnrollment.hed__Contact__r.Name}<br/>
+    <strong>Program:</strong> UCSF Implementation Science Training Program<br/>
+    <strong>Enrollment Status:</strong> {!programEnrollment.hed__Enrollment_Status__c}<br/>
+    <strong>Date:</strong> {!NOW()}
+</p>
+
+<!-- COURSE TABLE (NO Course Start column) -->
+<table>
+    <tr>
+        <th>Course<br/>Connection ID</th>
+        <th>Course Name</th>
+        <th>Term</th>
+        <th>Status</th>
+        <th>Course Fee</th>
+    </tr>
+
+    <apex:repeat value="{!courseEnrollments}" var="cc">
+        <tr>
+            <td>{!cc.Name}</td>
+            <td>{!cc.Course_Name__c}</td>
+            <td>{!cc.Term_Name__c}</td>
+            <td>{!cc.hed__Status__c}</td>
+            <td class="right-align">
+                   <apex:outputText value="${0,number,#,###.00}">
+                       <apex:param value="{!cc.Course_Fee__c}" />
+                   </apex:outputText>
+            </td>
+        </tr>
+    </apex:repeat>
+
+            <!-- TOTAL -->
+            <tr>
+                <td colspan="4" class="right-align bold">Total:</td>
+                <td class="right-align bold">
+                    <apex:outputText value="${0,number,#,###.00}">
+                        <apex:param value="{!totalAmount}" />
+                    </apex:outputText>
+                </td>
+            </tr>
+</table>
+
+<br/><br/>
+
+<!-- LONG TEXT SECTION -->
+<p>
+Enrollment is confirmed once payment is received. Courses may be paid for in advance or on a term-by-term basis. 
+Courses paid in advance will not be subject to future enrollment fee increases. Courses fill on a first-come, 
+first-served basis and many courses tend to fill ahead of the registration deadline.
+</p>
+
+<h3>Enrollment deadlines:</h3>
+<p>
+<strong>Fall:</strong> August 15 &nbsp;&nbsp;&nbsp;
+<strong>Winter:</strong> December 1 &nbsp;&nbsp;&nbsp;
+<strong>Spring:</strong> March 1
+</p>
+
+<h3>Accepted forms of Payment:</h3>
+<ul>
+    <li>For UCSF fund payments, send chartstring/speedtype to 
+        <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.
+    </li>
+    <li>Credit Card (Visa/MasterCard): 
+        <a href="https://onlinepayment.ucsf.edu">Payment Portal</a>
+    </li>
+    <li>Electronic Wire: email confirmation with learner + course to 
+        <a href="mailto:Online-Education@ucsf.edu">Online-Education@ucsf.edu</a>
+        and 
+        <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.
+    </li>
+</ul>
+
+<h3>Bank Information:</h3>
+<p>
+Bank of America<br/>
+2000 Clayton Road<br/>
+Concord, CA 94520<br/>
+ABA Routing (Wire): 026009593<br/>
+SWIFT (International Wires): BOFAUS3N<br/>
+ACH Routing: 121000358
+</p>
+
+<br/>
+
+<!-- FINAL MESSAGE ADDED -->
+<p><em>
+Please send any questions to us at 
+<a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.  
+We look forward to working with you!
+</em></p>
+
+</body>
+</html>
+
+</apex:page>

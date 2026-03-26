@@ -143,7 +143,7 @@ public with sharing class ProgramEnrollmentNotificationActions {
     // ===== 1) Enrollee confirmation (template-based, with safe fallback) =====
     @InvocableMethod(
         label='Send Program Enrollment Confirmation Email'
-        description='Sends a confirmation email to the Program Enrollment contact using the Program Enrollment Confirmation email template when available.'
+        description='Sends a confirmation email to the Program Enrollment contact using the ucsf-prod template (DeveloperName from ProgramEnrollmentEmailTemplateConfig) when active; otherwise inline body.'
     )
     public static void sendEnrollmentConfirmation(List<ProgramEnrollmentRequest> requests) {
         if (requests == null || requests.isEmpty()) return;
@@ -172,20 +172,7 @@ public with sharing class ProgramEnrollmentNotificationActions {
 
         if (peMap.isEmpty()) return;
 
-        // Try to locate the Lightning email template by DeveloperName.
-        // Assumes DeveloperName = 'Program_Enrollment_Confirmation'.
-        Id templateId = null;
-        try {
-            EmailTemplate tpl = [
-                SELECT Id
-                FROM EmailTemplate
-                WHERE DeveloperName = 'Program_Enrollment_Confirmation'
-                LIMIT 1
-            ];
-            templateId = tpl.Id;
-        } catch (Exception e) {
-            // If not found, we will fall back to a simple, inline email body.
-        }
+        Id templateId = ProgramEnrollmentEmailTemplateConfig.getActiveStudentConfirmationTemplateId();
 
         List<Messaging.SingleEmailMessage> emails = new List<Messaging.SingleEmailMessage>();
         List<Id> peIdsForEmails = new List<Id>();

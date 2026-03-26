@@ -1,0 +1,14 @@
+// Replace PE_ID and run in Developer Console / sf data query to verify where FA PDFs are linked.
+// Compare LinkedEntityId to hed__Program_Enrollment__c.Id vs sfProgramEnrollmentId__c on the PE.
+
+// Files on the Program Enrollment (standard Id)
+SELECT ContentDocumentId, LinkedEntityId, ContentDocument.Title
+FROM ContentDocumentLink
+WHERE LinkedEntityId = 'PE_ID'
+  AND ContentDocument.FileType = 'PDF'
+ORDER BY SystemModstamp DESC;
+
+// PE row: compare Ids (include sfProgramEnrollmentId__c if the field exists in your org)
+SELECT Id, Name, sfProgramEnrollmentId__c
+FROM hed__Program_Enrollment__c
+WHERE Id = 'PE_ID';

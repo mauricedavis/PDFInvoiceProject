@@ -1,4 +1,7 @@
-public with sharing class ProgramEnrollmentInvoiceQueueable implements Queueable, Database.AllowsCallouts {
+/**
+ * without sharing: Term/Course Enrollment counts and ContentDocument visibility for integration users.
+ */
+public without sharing class ProgramEnrollmentInvoiceQueueable implements Queueable, Database.AllowsCallouts {
 
     private List<Id> peIds;
     private Integer retry;
@@ -96,6 +99,8 @@ public with sharing class ProgramEnrollmentInvoiceQueueable implements Queueable
         }
 
         // Ready → Generate invoice PDFs in Batch (getContentAsPDF is supported in Batch execute, not in Queueable in prod).
+        // Do NOT enqueue student email here when batch runs: the first student queueable often fired before the
+        // invoice PDF existed and exhausted retries. Batch.finish chains student email for ALL peIds (see Batch ctor).
         System.debug('All records ready. Submitting invoice batch...');
         if (!toGenerate.isEmpty()) {
             if (Test.isRunningTest()) {
@@ -108,13 +113,10 @@ public with sharing class ProgramEnrollmentInvoiceQueueable implements Queueable
                     }
                 }
             } else {
-                Database.executeBatch(new ProgramEnrollmentInvoiceBatch(toGenerate), 1);
+                Database.executeBatch(new ProgramEnrollmentInvoiceBatch(toGenerate, peIds), 1);
             }
-        }
-
-        // Chain the student confirmation send attempt even if the invoice already existed.
-        // The student email queueable will wait until both invoice + responses PDFs exist and dedupe if already sent.
-        if (!Test.isRunningTest() && !peIds.isEmpty()) {
+        } else if (!Test.isRunningTest() && !peIds.isEmpty()) {
+            // Every PE already had an invoice PDF — no batch. Chain student email directly.
             System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(peIds));
         }
 

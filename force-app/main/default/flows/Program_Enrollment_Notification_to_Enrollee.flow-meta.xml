@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
     <apiVersion>64.0</apiVersion>
+    <actionCalls>
+        <name>Copy_FA_Responses_To_PE</name>
+        <label>Copy FA Responses To PE</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>ProgramEnrollmentCopyResponsesInvocable</actionName>
+        <actionType>apex</actionType>
+        <connector>
+            <targetReference>Needs_Invoice_Attached</targetReference>
+        </connector>
+        <flowTransactionModel>Automatic</flowTransactionModel>
+        <inputParameters>
+            <name>programEnrollmentId</name>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputParameters>
+    </actionCalls>
     <decisions>
         <name>Needs_Invoice_Attached</name>
         <label>Needs Invoice Attached?</label>
@@ -23,7 +41,8 @@
             <label>Yes, needs invoice attached</label>
         </rules>
     </decisions>
-    <description>11.11.2025 (MJD) - v49 - Removed duplicate Apex Action - allowing Apex code to handle creation of Invoice.
+    <description>03.25.2026 - v50 - Async path: Apex Copy FA responses PDF to PE before invoice branch (ProgramEnrollmentCopyResponsesInvocable).
+11.11.2025 (MJD) - v49 - Removed duplicate Apex Action - allowing Apex code to handle creation of Invoice.
 10.28.2025 (MJD) - v47 - Updated Action to call &quot;Generate and Attach Program&quot; so that we send PDF&apos;s of Responses from FA &amp; Invoice.
 09.23.2025 (MJD) - v46 - Added logic for FormAssembly URL as filter criteria in firing the flow.
 09.23.2025 (MJD) - v45 - Removed &apos;Email&apos; node to test if it is redundant.</description>
@@ -177,7 +196,7 @@
         <recordTriggerType>CreateAndUpdate</recordTriggerType>
         <scheduledPaths>
             <connector>
-                <targetReference>Needs_Invoice_Attached</targetReference>
+                <targetReference>Copy_FA_Responses_To_PE</targetReference>
             </connector>
             <pathType>AsyncAfterCommit</pathType>
         </scheduledPaths>

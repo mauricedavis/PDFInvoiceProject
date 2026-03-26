@@ -1,0 +1,471 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>58.0</apiVersion>
+    <decisions>
+        <name>Does_Payment_Opportunity_Exist</name>
+        <label>Does Payment Opportunity Exist?</label>
+        <locationX>248</locationX>
+        <locationY>863</locationY>
+        <defaultConnector>
+            <targetReference>Has_funding_department</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No</defaultConnectorLabel>
+        <rules>
+            <name>yes_exists</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>getPaymentOpportunities</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_Payment_Opportunity</targetReference>
+            </connector>
+            <label>yes payment exists</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Fee_type</name>
+        <label>Fee type</label>
+        <locationX>545</locationX>
+        <locationY>539</locationY>
+        <defaultConnectorLabel>Matriculated or Other</defaultConnectorLabel>
+        <rules>
+            <name>MOU_or_Ad_Hoc</name>
+            <conditionLogic>or</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Program_Enrollment__r.Fee_Type__c</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>UC Ad Hoc</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Program_Enrollment__r.Fee_Type__c</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Non-UC Ad Hoc</stringValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Program_Enrollment__r.Fee_Type__c</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>MOU</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>GetOpportunityRecordTypeIDforTermPayment</targetReference>
+            </connector>
+            <label>MOU or Ad Hoc</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>Has the lookup to Funding Department or Program field on Program Enrollment been filled out?</description>
+        <name>Has_funding_department</name>
+        <label>PE has funding department?</label>
+        <locationX>446</locationX>
+        <locationY>971</locationY>
+        <defaultConnector>
+            <targetReference>Create_Payment_Opportunity_Self</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No</defaultConnectorLabel>
+        <rules>
+            <name>Yes_Funding_Dept</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Program_Enrollment__r.Funding_Program_or_Department__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Create_Payment_Opportunity_Sponsored</targetReference>
+            </connector>
+            <label>Yes</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Is_Payment_Opportunity_Found</name>
+        <label>Is Payment Opportunity Found?</label>
+        <locationX>1238</locationX>
+        <locationY>647</locationY>
+        <defaultConnectorLabel>No, not found</defaultConnectorLabel>
+        <rules>
+            <name>Yes_found</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Opportunity_Match</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <label>Yes, found</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <name>Term_Enrollment_Status</name>
+        <label>Term Enrollment Status</label>
+        <locationX>1089</locationX>
+        <locationY>431</locationY>
+        <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
+        <rules>
+            <name>Enrolled</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Status__c</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Enrolled</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Fee_type</targetReference>
+            </connector>
+            <label>Enrolled</label>
+        </rules>
+        <rules>
+            <name>Not_Enrolled</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Status__c</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <stringValue>Not enrolled</stringValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_Opportunity_Match</targetReference>
+            </connector>
+            <label>Not Enrolled</label>
+        </rules>
+    </decisions>
+    <description>06/12/2025 &lt;MJD&gt; v34: Removed logic that deletes &apos;Payment Opp&apos; for this version. If needed, revert to v33.
+05/08/2025 &lt;MJD&gt; Added logic to check for an Opportunity when the &apos;Term Enrollment&apos; = Not enrolled. Check prevents error when no Opportunity (Payment) is found.
+
+1. If there is no Term Payment, creates new Opportunity of type Term Payment for the learner
+2. If Term Payment exists with stage = Payment Due, updates the Amount to reflect Total Owed on Term Enrollment</description>
+    <environments>Default</environments>
+    <formulas>
+        <description>&quot;Term Enrollment&quot; + FirstName + LastName + Term + Program, cut to 80 char.</description>
+        <name>TermEnrollmentName</name>
+        <dataType>String</dataType>
+        <expression>LEFT(
+(&quot;TE-&quot; 
++ {!$Record.Program_Enrollment__r.Contact_Name__c} 
++ &quot; &quot; 
++ {!$Record.Term__r.Name} 
++  &quot; &quot; 
++  IF(
+        ISBLANK({!$Record.Program_Enrollment__r.hed__Account__r.Name}), 
+        &quot;&quot;, 
+        {!$Record.Program_Enrollment__r.hed__Account__r.Name}
+))
+, 80)</expression>
+    </formulas>
+    <formulas>
+        <description>&quot;Payment&quot; + FirstName + LastName + Term + Program, cut to 80 char.</description>
+        <name>TermPaymentOpportunityName</name>
+        <dataType>String</dataType>
+        <expression>LEFT(
+    (&quot;Payment &quot; 
+    + {!$Record.Program_Enrollment__r.hed__Contact__r.FirstName} 
+    + &quot; &quot; 
+    + {!$Record.Program_Enrollment__r.hed__Contact__r.LastName} 
+    + &quot; &quot; 
+    + {!$Record.Term__r.Name} 
+    + &quot; &quot; 
+    + IF(
+        ISBLANK({!$Record.Program_Enrollment__r.hed__Account__r.Name}), 
+        &quot;&quot;, 
+        {!$Record.Program_Enrollment__r.hed__Account__r.Name}
+    ))
+, 80)</expression>
+    </formulas>
+    <interviewLabel>Term Enrollment Create {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Term Enrollment Create or Update - After Save</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <recordCreates>
+        <description>Creates a new Opportunity for the Term Enrollment with record type = Term Payment; Close Date = Term Start Date; Stage = Payment Due; Amount = Term Enrollment Total Owed, and Name = TermPaymentOpportunityName formula, Fund COA = PE Fund ID</description>
+        <name>Create_Payment_Opportunity_Self</name>
+        <label>Create Payment Opportunity (Self Pay)</label>
+        <locationX>578</locationX>
+        <locationY>1079</locationY>
+        <inputAssignments>
+            <field>AccountId</field>
+            <value>
+                <elementReference>$Record.Program_Enrollment__r.hed__Contact__r.Account.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Amount</field>
+            <value>
+                <elementReference>$Record.Total_Owed2__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>CloseDate</field>
+            <value>
+                <elementReference>$Record.Term_Start_Date__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Funding_Source__c</field>
+            <value>
+                <elementReference>$Record.Program_Enrollment__r.Funding_Source__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Name</field>
+            <value>
+                <elementReference>TermPaymentOpportunityName</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>RecordTypeId</field>
+            <value>
+                <elementReference>GetOpportunityRecordTypeIDforTermPayment.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>StageName</field>
+            <value>
+                <stringValue>Payment Due</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Term_Enrollment__c</field>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <object>Opportunity</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+    <recordCreates>
+        <description>Creates a new Opportunity for the Term Enrollment with record type = Term Payment; Account = PE Funding Department or Program; Close Date = Term Start Date; Stage = Payment Due; Amount = Term Enrollment Total Owed, and Name = TermPaymentOpportunityName formula, Fund COA = PE Fund ID</description>
+        <name>Create_Payment_Opportunity_Sponsored</name>
+        <label>Create Payment Opportunity (Sponsored)</label>
+        <locationX>314</locationX>
+        <locationY>1079</locationY>
+        <inputAssignments>
+            <field>AccountId</field>
+            <value>
+                <elementReference>$Record.Program_Enrollment__r.Funding_Program_or_Department__r.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Amount</field>
+            <value>
+                <elementReference>$Record.Total_Owed2__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>CloseDate</field>
+            <value>
+                <elementReference>$Record.Term_Start_Date__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Fund_COA__c</field>
+            <value>
+                <elementReference>$Record.Program_Enrollment__r.Fund_ID__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Funding_Source__c</field>
+            <value>
+                <elementReference>$Record.Program_Enrollment__r.Funding_Source__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Name</field>
+            <value>
+                <elementReference>TermPaymentOpportunityName</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>RecordTypeId</field>
+            <value>
+                <elementReference>GetOpportunityRecordTypeIDforTermPayment.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>StageName</field>
+            <value>
+                <stringValue>Payment Due</stringValue>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Term_Enrollment__c</field>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <object>Opportunity</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordCreates>
+    <recordLookups>
+        <name>Get_Opportunity_Match</name>
+        <label>Get Opportunity Match</label>
+        <locationX>1238</locationX>
+        <locationY>539</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Is_Payment_Opportunity_Found</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Term_Enrollment__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Opportunity</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <description>Gets Record Type ID for Term Payment so that this Flow will function across sandboxes where the Record Type ID may change</description>
+        <name>GetOpportunityRecordTypeIDforTermPayment</name>
+        <label>Get RecordTypeID for TermPayment Opportunity</label>
+        <locationX>248</locationX>
+        <locationY>647</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>getPaymentOpportunities</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>DeveloperName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Term_Payment</stringValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>RecordType</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <description>Gets first related Payment Opportunity where Stage = Payment Due</description>
+        <name>getPaymentOpportunities</name>
+        <label>getPaymentOpportunities</label>
+        <locationX>248</locationX>
+        <locationY>755</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Does_Payment_Opportunity_Exist</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Name</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>TermPaymentOpportunityName</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>CloseDate</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Term_Start_Date__c</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Opportunity</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordUpdates>
+        <name>Update_Payment_Opportunity</name>
+        <label>Update Payment Opportunity</label>
+        <locationX>50</locationX>
+        <locationY>971</locationY>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>getPaymentOpportunities.Id</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>Amount_Override__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>false</booleanValue>
+            </value>
+        </filters>
+        <filters>
+            <field>StageName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Payment Due</stringValue>
+            </value>
+        </filters>
+        <inputAssignments>
+            <field>Term_Enrollment__c</field>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Amount</field>
+            <value>
+                <elementReference>$Record.Remaining_Balance__c</elementReference>
+            </value>
+        </inputAssignments>
+        <object>Opportunity</object>
+    </recordUpdates>
+    <recordUpdates>
+        <description>Uses Term Enrollment Name formula (&quot;Term Enrollment&quot; + FirstName + LastName + Term + Program) cut to 80 char.</description>
+        <name>Update_Term_Enrollment_Name</name>
+        <label>Update Term Enrollment Name</label>
+        <locationX>1089</locationX>
+        <locationY>323</locationY>
+        <connector>
+            <targetReference>Term_Enrollment_Status</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>Name</field>
+            <value>
+                <elementReference>TermEnrollmentName</elementReference>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record</inputReference>
+    </recordUpdates>
+    <start>
+        <locationX>963</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Update_Term_Enrollment_Name</targetReference>
+        </connector>
+        <object>Term_Enrollment__c</object>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Active</status>
+</Flow>

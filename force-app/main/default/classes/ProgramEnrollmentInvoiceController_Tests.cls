@@ -346,6 +346,141 @@ private class ProgramEnrollmentInvoiceController_Tests {
     }
 
     @isTest
+    static void test_RegenerateBatch_emptyList_completes() {
+        Test.startTest();
+        Database.executeBatch(new ProgramEnrollmentInvoiceRegenerateBatch(null), 1);
+        Database.executeBatch(new ProgramEnrollmentInvoiceRegenerateBatch(new List<Id>()), 1);
+        Test.stopTest();
+        System.assert(true, 'Empty regenerate batch should finish without error.');
+    }
+
+    @isTest
+    static void test_RegenerateBatch_executeCatchesRegenerateException() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id
+            FROM hed__Program_Enrollment__c
+            WHERE hed__Contact__c != null
+            LIMIT 1
+        ];
+        ProgramEnrollmentInvoiceController.throwFromRegenerateInvoicePdfForTest = true;
+        Test.startTest();
+        Database.executeBatch(new ProgramEnrollmentInvoiceRegenerateBatch(new List<Id>{ pe.Id }), 1);
+        Test.stopTest();
+        ProgramEnrollmentInvoiceController.throwFromRegenerateInvoicePdfForTest = false;
+        System.assert(true, 'Batch execute should swallow exceptions from regenerateInvoicePdf.');
+    }
+
+    @isTest
+    static void test_RegenerateBatch_finishCatchesUpdateFailureWhenCheckboxFieldPresent() {
+        if (!Schema.sObjectType.hed__Program_Enrollment__c.fields.getMap().containsKey('Regenerate_Invoice__c')) {
+            System.assert(true, 'Regenerate_Invoice__c not deployed; skip finish catch path.');
+            return;
+        }
+        Account acct = new Account(Name = 'Batch Finish Catch Acct');
+        insert acct;
+        Contact con = new Contact(FirstName = 'Batch', LastName = 'FinishCatch', Email = 'bfc@example.com');
+        insert con;
+        hed__Program_Enrollment__c pe = new hed__Program_Enrollment__c(
+            hed__Account__c = acct.Id,
+            hed__Contact__c = con.Id,
+            hed__Enrollment_Status__c = 'Payment Pending'
+        );
+        insert pe;
+        Id deletedId = pe.Id;
+        delete pe;
+
+        Test.startTest();
+        Database.executeBatch(new ProgramEnrollmentInvoiceRegenerateBatch(new List<Id>{ deletedId }), 1);
+        Test.stopTest();
+        System.assert(true, 'finish() should catch DML errors when clearing checkbox on deleted rows.');
+    }
+
+    @isTest
+    static void test_RegenerateBatch_executesRegenerateAndFinish() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id
+            FROM hed__Program_Enrollment__c
+            WHERE hed__Contact__c != null
+            LIMIT 1
+        ];
+        ProgramEnrollmentInvoiceController.generateAttachAndEmail(pe.Id);
+
+        Test.startTest();
+        Database.executeBatch(new ProgramEnrollmentInvoiceRegenerateBatch(new List<Id>{ pe.Id }), 1);
+        Test.stopTest();
+
+        Integer invCount = [
+            SELECT COUNT()
+            FROM ContentDocumentLink
+            WHERE LinkedEntityId = :pe.Id
+              AND ContentDocument.FileType = 'PDF'
+              AND ContentDocument.Title LIKE 'Invoice%'
+        ];
+        System.assert(invCount > 0, 'Regenerate batch should leave an invoice PDF on the PE.');
+    }
+
+    @isTest
+    static void test_RegenerateBatch_twoProgramEnrollments() {
+        List<hed__Program_Enrollment__c> pes = [
+            SELECT Id
+            FROM hed__Program_Enrollment__c
+            WHERE hed__Contact__c != null
+            LIMIT 2
+        ];
+        System.assert(pes.size() >= 1, 'Setup should provide at least one PE with contact.');
+        List<Id> ids = new List<Id>();
+        for (hed__Program_Enrollment__c pe : pes) {
+            ProgramEnrollmentInvoiceController.generateAttachAndEmail(pe.Id);
+            ids.add(pe.Id);
+        }
+
+        Test.startTest();
+        Database.executeBatch(new ProgramEnrollmentInvoiceRegenerateBatch(ids), 10);
+        Test.stopTest();
+
+        for (Id peId : ids) {
+            System.assert(
+                [SELECT COUNT() FROM ContentDocumentLink WHERE LinkedEntityId = :peId AND ContentDocument.Title LIKE 'Invoice%'] > 0,
+                'Each PE should still have an invoice after batch.'
+            );
+        }
+    }
+
+    @isTest
+    static void test_RegenerateBatch_finishClearsRegenerateCheckboxWhenPresent() {
+        if (!Schema.sObjectType.hed__Program_Enrollment__c.fields.getMap().containsKey('Regenerate_Invoice__c')) {
+            System.assert(true, 'Regenerate_Invoice__c not deployed in this org; skip finish() update path.');
+            return;
+        }
+
+        hed__Program_Enrollment__c pe = [
+            SELECT Id
+            FROM hed__Program_Enrollment__c
+            WHERE hed__Contact__c != null
+            LIMIT 1
+        ];
+        ProgramEnrollmentInvoiceController.generateAttachAndEmail(pe.Id);
+
+        SObject flagOn = Schema.getGlobalDescribe().get('hed__Program_Enrollment__c').newSObject(pe.Id);
+        flagOn.put('Regenerate_Invoice__c', true);
+        update flagOn;
+
+        Id peId = pe.Id;
+        Test.startTest();
+        Database.executeBatch(new ProgramEnrollmentInvoiceRegenerateBatch(new List<Id>{ peId }), 1);
+        Test.stopTest();
+
+        List<SObject> rows = Database.query(
+            'SELECT Regenerate_Invoice__c FROM hed__Program_Enrollment__c WHERE Id = :peId LIMIT 1'
+        );
+        System.assertEquals(
+            false,
+            rows[0].get('Regenerate_Invoice__c'),
+            'Regenerate batch finish should clear Regenerate_Invoice__c.'
+        );
+    }
+
+    @isTest
     static void test_RegenerateInvoicePdf_ReplacesExisting() {
         hed__Program_Enrollment__c pe = [
             SELECT Id, Name

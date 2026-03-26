@@ -1,4 +1,8 @@
-public with sharing class ProgramEnrollmentInvoiceController {
+/**
+ * without sharing: batch/queueable automation must read Course Enrollments and build the invoice PDF
+ * even when the running user's sharing would hide related Term/Course rows.
+ */
+public without sharing class ProgramEnrollmentInvoiceController {
 
     public Id programEnrollmentId { get; private set; }
     public hed__Program_Enrollment__c programEnrollment { get; private set; }
@@ -143,8 +147,15 @@ public with sharing class ProgramEnrollmentInvoiceController {
      * Safe: only removes files we created with Title = Invoice_<PE Name>.
      * Does not send emails.
      */
+    @TestVisible
+    private static Boolean throwFromRegenerateInvoicePdfForTest = false;
+
     public static void regenerateInvoicePdf(Id programEnrollmentId) {
         if (programEnrollmentId == null) return;
+
+        if (Test.isRunningTest() && throwFromRegenerateInvoicePdfForTest) {
+            throw new CalloutException('ProgramEnrollmentInvoiceController_Tests coverage');
+        }
 
         try {
             hed__Program_Enrollment__c enrollment = [

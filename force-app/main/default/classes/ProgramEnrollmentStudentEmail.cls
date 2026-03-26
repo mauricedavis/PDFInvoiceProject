@@ -3,8 +3,15 @@
  * Requires a verified Org-Wide Email Address in Setup → Organization-Wide Addresses whose Address
  * matches PROGRAM_OFFICE_FROM_EMAIL (case-insensitive), and access granted to the user/profile that
  * runs the Flow or Queueable that sends this email.
+ *
+ * without sharing: FormAssembly stores the responses PDF on the Contact; the queueable/invocable
+ * often runs as an integration or system user that cannot see those Files under with sharing.
+ * We must read Contact-linked ContentVersion and publish a copy on the PE reliably.
+ *
+ * Body/subject: uses active EmailTemplate from ProgramEnrollmentEmailTemplateConfig (ucsf-prod) when present;
+ * otherwise the inline plain-text confirmation (tests/sandboxes without that template).
  */
-public with sharing class ProgramEnrollmentStudentEmail {
+public without sharing class ProgramEnrollmentStudentEmail {
 
     /** Canonical Program Office sender; must match the verified OWEA Address in each org. */
     private static final String PROGRAM_OFFICE_FROM_EMAIL = 'implementationscience@ucsf.edu';
@@ -12,12 +19,23 @@ public with sharing class ProgramEnrollmentStudentEmail {
     private static Id cachedProgramOfficeOweaId;
     private static Boolean programOfficeOweaLookupDone;
 
+    @TestVisible
+    private static Boolean allowOrgWideEmailLookupInTest = false;
+    @TestVisible
+    private static Boolean allowLogReadinessTimeoutTasksInTest = false;
+
+    @TestVisible
+    private static void resetOweaCacheForTest() {
+        cachedProgramOfficeOweaId = null;
+        programOfficeOweaLookupDone = false;
+    }
+
     /**
      * Resolves the OrgWideEmailAddress Id for PROGRAM_OFFICE_FROM_EMAIL (case-insensitive).
      * Returns null in unit tests or when no matching OWEA exists (email then uses running user as From).
      */
     private static Id getProgramOfficeOrgWideEmailAddressId() {
-        if (Test.isRunningTest()) {
+        if (Test.isRunningTest() && !allowOrgWideEmailLookupInTest) {
             return null;
         }
         if (programOfficeOweaLookupDone) {
@@ -66,6 +84,47 @@ public with sharing class ProgramEnrollmentStudentEmail {
 
         // Defer to a Queueable that can wait/retry until the invoice is present.
         System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(peIds));
+    }
+
+    /**
+     * Publishes "Course Registration Responses" on the PE using the latest FA-style PDF from the
+     * Contact (or a non-invoice PDF already on the PE). Does not send email — use to repair PEs or
+     * from a Flow step after FormAssembly attaches to the Contact.
+     */
+    public static void copyResponsesPdfToProgramEnrollment(Id peId) {
+        if (peId == null) {
+            return;
+        }
+        List<hed__Program_Enrollment__c> rows = [
+            SELECT Id, hed__Contact__c
+            FROM hed__Program_Enrollment__c
+            WHERE Id = :peId
+            LIMIT 1
+        ];
+        if (rows.isEmpty()) {
+            return;
+        }
+        hed__Program_Enrollment__c pe = rows[0];
+        PdfDoc responses = getLatestResponsesPdf(pe.hed__Contact__c, pe.Id);
+        if (responses == null) {
+            return;
+        }
+        ensureResponsesOnProgramEnrollment(pe.Id, pe.hed__Contact__c, responses);
+    }
+
+    /**
+     * Test hook: publish stable Course Registration Responses from a ContentDocument when body is null (re-query VersionData path).
+     */
+    @TestVisible
+    static Id testEnsureResponsesFromContentDocumentIdOnly(Id peId, Id contentDocumentId) {
+        if (peId == null || contentDocumentId == null) {
+            return null;
+        }
+        PdfDoc p = new PdfDoc();
+        p.title = 'Test source doc';
+        p.body = null;
+        p.contentDocumentId = contentDocumentId;
+        return ensureResponsesOnProgramEnrollment(peId, null, p);
     }
 
     private static Task buildTask(Id peId, Id contactId, String subject, String body) {
@@ -127,29 +186,81 @@ public with sharing class ProgramEnrollmentStudentEmail {
         return links[0].ContentDocument.LatestPublishedVersionId;
     }
 
-    private static PdfDoc getLatestResponsesPdf(Id contactId) {
-        if (contactId == null) return null;
+    /** Matches invoice PDF naming used elsewhere in this class (SOQL-style). */
+    private static Boolean titleLooksLikeInvoice(String title) {
+        if (String.isBlank(title)) {
+            return false;
+        }
+        return title.startsWithIgnoreCase('Invoice_') || title.containsIgnoreCase('Invoice');
+    }
+
+    /**
+     * True if the PE has at least one PDF that is not treated as the invoice (e.g. FormAssembly linked the file to the PE).
+     */
+    public static Boolean hasNonInvoicePdfOnProgramEnrollment(Id peId) {
+        if (peId == null) {
+            return false;
+        }
+        List<ContentDocumentLink> links = [
+            SELECT ContentDocument.Title
+            FROM ContentDocumentLink
+            WHERE LinkedEntityId = :peId
+              AND ContentDocument.FileType = 'PDF'
+            ORDER BY SystemModstamp DESC
+            LIMIT 50
+        ];
+        for (ContentDocumentLink lnk : links) {
+            if (lnk.ContentDocument == null) {
+                continue;
+            }
+            String t = lnk.ContentDocument.Title;
+            if (!titleLooksLikeInvoice(t)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Student email queueable readiness: responses may live on the Contact (typical) or only on the PE (FormAssembly).
+     */
+    public static Boolean hasResponsesSourceForStudentEmail(Id peId, Id contactId) {
+        if (peId == null) {
+            return false;
+        }
+        if (contactId != null && hasAnyResponsesPdf(contactId)) {
+            return true;
+        }
+        return hasNonInvoicePdfOnProgramEnrollment(peId);
+    }
+
+    private static PdfDoc getLatestResponsesPdf(Id contactId, Id peId) {
+        if (contactId == null && peId == null) {
+            return null;
+        }
 
         // 1) Prefer a File linked to the Contact matching common keywords.
-        List<ContentDocumentLink> links = [
-            SELECT ContentDocument.Title,
-                   ContentDocument.LatestPublishedVersionId,
-                   ContentDocumentId,
-                   ContentDocument.FileType
-            FROM ContentDocumentLink
-            WHERE LinkedEntityId = :contactId
-              AND ContentDocument.FileType = 'PDF'
-              AND (
-                   ContentDocument.Title LIKE '%Course Registration%'
-                OR ContentDocument.Title LIKE '%Registration%'
-                OR ContentDocument.Title LIKE '%Response%'
-                OR ContentDocument.Title LIKE '%Responses%'
-              )
-            ORDER BY SystemModstamp DESC
-            LIMIT 1
-        ];
+        List<ContentDocumentLink> links = (contactId == null)
+            ? new List<ContentDocumentLink>()
+            : [
+                  SELECT ContentDocument.Title,
+                         ContentDocument.LatestPublishedVersionId,
+                         ContentDocumentId,
+                         ContentDocument.FileType
+                  FROM ContentDocumentLink
+                  WHERE LinkedEntityId = :contactId
+                    AND ContentDocument.FileType = 'PDF'
+                    AND (
+                         ContentDocument.Title LIKE '%Course Registration%'
+                      OR ContentDocument.Title LIKE '%Registration%'
+                      OR ContentDocument.Title LIKE '%Response%'
+                      OR ContentDocument.Title LIKE '%Responses%'
+                    )
+                  ORDER BY SystemModstamp DESC
+                  LIMIT 1
+              ];
 
-        if (!links.isEmpty()) {
+        if (contactId != null && !links.isEmpty()) {
             ContentVersion cv = [
                 SELECT Title, VersionData, ContentDocumentId
                 FROM ContentVersion
@@ -164,18 +275,20 @@ public with sharing class ProgramEnrollmentStudentEmail {
         }
 
         // 1b) Fallback: any PDF File linked to the Contact (no title filter).
-        List<ContentDocumentLink> anyPdfLinks = [
-            SELECT ContentDocument.Title,
-                   ContentDocument.LatestPublishedVersionId,
-                   ContentDocumentId,
-                   ContentDocument.FileType
-            FROM ContentDocumentLink
-            WHERE LinkedEntityId = :contactId
-              AND ContentDocument.FileType = 'PDF'
-            ORDER BY SystemModstamp DESC
-            LIMIT 1
-        ];
-        if (!anyPdfLinks.isEmpty()) {
+        List<ContentDocumentLink> anyPdfLinks = (contactId == null)
+            ? new List<ContentDocumentLink>()
+            : [
+                  SELECT ContentDocument.Title,
+                         ContentDocument.LatestPublishedVersionId,
+                         ContentDocumentId,
+                         ContentDocument.FileType
+                  FROM ContentDocumentLink
+                  WHERE LinkedEntityId = :contactId
+                    AND ContentDocument.FileType = 'PDF'
+                  ORDER BY SystemModstamp DESC
+                  LIMIT 1
+              ];
+        if (contactId != null && !anyPdfLinks.isEmpty()) {
             ContentVersion cv = [
                 SELECT Title, VersionData, ContentDocumentId
                 FROM ContentVersion
@@ -190,21 +303,23 @@ public with sharing class ProgramEnrollmentStudentEmail {
         }
 
         // 2) Fallback to classic Attachment on the Contact (FormAssembly often uses this).
-        List<Attachment> atts = [
-            SELECT Name, Body, ContentType
-            FROM Attachment
-            WHERE ParentId = :contactId
-              AND (ContentType LIKE 'application/pdf%' OR Name LIKE '%.pdf' OR Name LIKE '%.PDF')
-              AND (
-                   Name LIKE '%Course Registration%'
-                OR Name LIKE '%Registration%'
-                OR Name LIKE '%Response%'
-                OR Name LIKE '%Responses%'
-              )
-            ORDER BY CreatedDate DESC
-            LIMIT 1
-        ];
-        if (!atts.isEmpty()) {
+        List<Attachment> atts = (contactId == null)
+            ? new List<Attachment>()
+            : [
+                  SELECT Name, Body, ContentType
+                  FROM Attachment
+                  WHERE ParentId = :contactId
+                    AND (ContentType LIKE 'application/pdf%' OR Name LIKE '%.pdf' OR Name LIKE '%.PDF')
+                    AND (
+                         Name LIKE '%Course Registration%'
+                      OR Name LIKE '%Registration%'
+                      OR Name LIKE '%Response%'
+                      OR Name LIKE '%Responses%'
+                    )
+                  ORDER BY CreatedDate DESC
+                  LIMIT 1
+              ];
+        if (contactId != null && !atts.isEmpty()) {
             PdfDoc a = new PdfDoc();
             a.title = atts[0].Name;
             a.body = atts[0].Body;
@@ -214,26 +329,146 @@ public with sharing class ProgramEnrollmentStudentEmail {
         }
 
         // 2b) Fallback: any PDF Attachment on the Contact (no name keyword filter).
-        List<Attachment> anyPdfAtts = [
-            SELECT Name, Body, ContentType
-            FROM Attachment
-            WHERE ParentId = :contactId
-              AND (ContentType LIKE 'application/pdf%' OR Name LIKE '%.pdf' OR Name LIKE '%.PDF')
-            ORDER BY CreatedDate DESC
+        List<Attachment> anyPdfAtts = (contactId == null)
+            ? new List<Attachment>()
+            : [
+                  SELECT Name, Body, ContentType
+                  FROM Attachment
+                  WHERE ParentId = :contactId
+                    AND (ContentType LIKE 'application/pdf%' OR Name LIKE '%.pdf' OR Name LIKE '%.PDF')
+                  ORDER BY CreatedDate DESC
+                  LIMIT 1
+              ];
+        if (contactId != null && !anyPdfAtts.isEmpty()) {
+            PdfDoc a2 = new PdfDoc();
+            a2.title = anyPdfAtts[0].Name;
+            a2.body = anyPdfAtts[0].Body;
+            if (a2.body == null) {
+                a2.body = Blob.valueOf('');
+            }
+            a2.contentDocumentId = null;
+            return a2;
+        }
+
+        // 3) FormAssembly may link the responses PDF to the Program Enrollment only (not the Contact).
+        return getLatestResponsesPdfFromProgramEnrollment(peId);
+    }
+
+    /**
+     * FA sometimes links files to sfProgramEnrollmentId__c (see Flow Get_ContentDocumentLink) instead of hed__Program_Enrollment__c.Id.
+     */
+    private static Set<Id> linkEntityIdsForProgramEnrollmentPdfSearch(Id peId) {
+        Set<Id> targets = new Set<Id>();
+        if (peId != null) {
+            targets.add(peId);
+        }
+        if (!Schema.sObjectType.hed__Program_Enrollment__c.fields.getMap().containsKey('sfProgramEnrollmentId__c')) {
+            return targets;
+        }
+        List<SObject> rows = Database.query(
+            'SELECT sfProgramEnrollmentId__c FROM hed__Program_Enrollment__c WHERE Id = :peId LIMIT 1'
+        );
+        if (rows.isEmpty()) {
+            return targets;
+        }
+        Id alt = parseStringToSalesforceId(rows[0].get('sfProgramEnrollmentId__c'));
+        if (alt != null && alt != peId) {
+            targets.add(alt);
+        }
+        return targets;
+    }
+
+    private static Id parseStringToSalesforceId(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        String s = String.valueOf(raw).trim();
+        if (s.length() != 15 && s.length() != 18) {
+            return null;
+        }
+        try {
+            return (Id) s;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static PdfDoc getLatestResponsesPdfFromProgramEnrollment(Id peId) {
+        if (peId == null) {
+            return null;
+        }
+        Set<Id> linkTargets = linkEntityIdsForProgramEnrollmentPdfSearch(peId);
+        if (linkTargets.isEmpty()) {
+            return null;
+        }
+        List<Id> targetList = new List<Id>(linkTargets);
+        List<ContentDocumentLink> peLinks = [
+            SELECT ContentDocument.Title,
+                   ContentDocument.LatestPublishedVersionId,
+                   ContentDocumentId,
+                   ContentDocument.FileType
+            FROM ContentDocumentLink
+            WHERE LinkedEntityId IN :targetList
+              AND ContentDocument.FileType = 'PDF'
+            ORDER BY SystemModstamp DESC
+            LIMIT 50
+        ];
+        for (ContentDocumentLink lnk : peLinks) {
+            if (lnk.ContentDocument == null || lnk.ContentDocument.LatestPublishedVersionId == null) {
+                continue;
+            }
+            if (titleLooksLikeInvoice(lnk.ContentDocument.Title)) {
+                continue;
+            }
+            ContentVersion cv = [
+                SELECT Title, VersionData, ContentDocumentId
+                FROM ContentVersion
+                WHERE Id = :lnk.ContentDocument.LatestPublishedVersionId
+                LIMIT 1
+            ];
+            PdfDoc d = new PdfDoc();
+            d.title = cv.Title;
+            d.body = cv.VersionData;
+            d.contentDocumentId = cv.ContentDocumentId;
+            return d;
+        }
+        return null;
+    }
+
+    /**
+     * Resolves PDF bytes for publishing stable "Course Registration Responses" on the PE.
+     * When body was not loaded (e.g. edge cases) but contentDocumentId is set, loads latest VersionData.
+     */
+    private static Blob resolveResponsesBlobForPublish(PdfDoc responses) {
+        if (responses == null) {
+            return null;
+        }
+        if (responses.body != null) {
+            return responses.body;
+        }
+        if (responses.contentDocumentId == null) {
+            return null;
+        }
+        List<ContentVersion> vers = [
+            SELECT VersionData
+            FROM ContentVersion
+            WHERE ContentDocumentId = :responses.contentDocumentId AND IsLatest = TRUE
             LIMIT 1
         ];
-        if (anyPdfAtts.isEmpty()) return null;
-
-        PdfDoc a2 = new PdfDoc();
-        a2.title = anyPdfAtts[0].Name;
-        a2.body = anyPdfAtts[0].Body;
-        if (a2.body == null) a2.body = Blob.valueOf('');
-        a2.contentDocumentId = null;
-        return a2;
+        if (vers.isEmpty()) {
+            return null;
+        }
+        return vers[0].VersionData;
     }
 
     private static Id ensureResponsesOnProgramEnrollment(Id peId, Id contactId, PdfDoc responses) {
-        if (peId == null || responses == null || responses.body == null) return null;
+        if (peId == null || responses == null) {
+            return null;
+        }
+        Blob publishBlob = resolveResponsesBlobForPublish(responses);
+        if (publishBlob == null) {
+            return null;
+        }
 
         // Publish a *new* File directly to the Program Enrollment with a stable title,
         // so we can reliably dedupe even if FormAssembly produces varying filenames.
@@ -253,7 +488,7 @@ public with sharing class ProgramEnrollmentStudentEmail {
         ContentVersion cv = new ContentVersion();
         cv.Title = cvTitle;
         cv.PathOnClient = fileName;
-        cv.VersionData = responses.body;
+        cv.VersionData = publishBlob;
         cv.IsMajorVersion = true;
         cv.FirstPublishLocationId = peId;
         insert cv;
@@ -353,7 +588,10 @@ public with sharing class ProgramEnrollmentStudentEmail {
      * both invoice + responses PDFs (prod visibility; skipped in @IsTest).
      */
     public static void logReadinessTimeoutTasks(List<Id> peIds) {
-        if (Test.isRunningTest() || peIds == null || peIds.isEmpty()) {
+        if (peIds == null || peIds.isEmpty()) {
+            return;
+        }
+        if (Test.isRunningTest() && !allowLogReadinessTimeoutTasksInTest) {
             return;
         }
         Map<Id, hed__Program_Enrollment__c> peMap = new Map<Id, hed__Program_Enrollment__c>(
@@ -371,7 +609,9 @@ public with sharing class ProgramEnrollmentStudentEmail {
             }
             Boolean hasInv = hasInvoicePdf(peId);
             Id contactId = pe.hed__Contact__c;
-            Boolean hasResp = contactId != null && hasAnyResponsesPdf(contactId);
+            Boolean hasResp = hasResponsesSourceForStudentEmail(peId, contactId);
+            Boolean hasRespOnContact = contactId != null && hasAnyResponsesPdf(contactId);
+            Boolean hasRespOnPe = hasNonInvoicePdfOnProgramEnrollment(peId);
             Task t = new Task();
             t.WhatId = peId;
             t.WhoId = pe.hed__Contact__c;
@@ -381,8 +621,12 @@ public with sharing class ProgramEnrollmentStudentEmail {
                 'Max async retries passed without both attachments. ' +
                 'Invoice PDF on Program Enrollment: ' +
                 hasInv +
-                '. Responses PDF on Contact: ' +
+                '. Any responses source (Contact or PE): ' +
                 hasResp +
+                '. PDF on Contact: ' +
+                hasRespOnContact +
+                '. Non-invoice PDF on PE: ' +
+                hasRespOnPe +
                 '.';
             tasks.add(t);
         }
@@ -408,8 +652,11 @@ public with sharing class ProgramEnrollmentStudentEmail {
         ]);
         if (peMap.isEmpty()) return;
 
+        Id confirmationTemplateId = ProgramEnrollmentEmailTemplateConfig.getActiveStudentConfirmationTemplateId();
+
         // Dedupe: do not send again if we already logged a confirmation on the PE in the last 24 hours.
         // Ignore legacy "(dedupe token)" tasks — only count real sends / EmailMessage logs.
+        // Template-based sends may use a different subject; also match EmailMessage.EmailTemplateId.
         Set<Id> alreadySentPeIds = new Set<Id>();
         for (Task t : [
             SELECT WhatId
@@ -432,6 +679,20 @@ public with sharing class ProgramEnrollmentStudentEmail {
             if (em.RelatedToId != null) alreadySentPeIds.add(em.RelatedToId);
         }
 
+        if (confirmationTemplateId != null) {
+            for (EmailMessage emTpl : [
+                SELECT RelatedToId
+                FROM EmailMessage
+                WHERE RelatedToId IN :peIds
+                  AND EmailTemplateId = :confirmationTemplateId
+                  AND MessageDate = LAST_N_DAYS:1
+            ]) {
+                if (emTpl.RelatedToId != null) {
+                    alreadySentPeIds.add(emTpl.RelatedToId);
+                }
+            }
+        }
+
         List<Messaging.SingleEmailMessage> emails = new List<Messaging.SingleEmailMessage>();
         List<Id> peIdsForEmails = new List<Id>();
         List<Id> contactIdsForEmails = new List<Id>();
@@ -444,7 +705,7 @@ public with sharing class ProgramEnrollmentStudentEmail {
             if (String.isBlank(pe.hed__Contact__r.Email)) continue;
             if (alreadySentPeIds.contains(pe.Id)) continue;
 
-            PdfDoc responses = getLatestResponsesPdf(pe.hed__Contact__c);
+            PdfDoc responses = getLatestResponsesPdf(pe.hed__Contact__c, pe.Id);
             PdfDoc invoice = getLatestInvoicePdf(pe.Id);
 
             // If either PDF is missing, do not send.
@@ -468,19 +729,22 @@ public with sharing class ProgramEnrollmentStudentEmail {
                 msg.setOrgWideEmailAddressId(programOfficeOweaId);
             }
 
-            String programName = (pe.hed__Account__r != null) ? pe.hed__Account__r.Name : 'the program';
-            String subject = 'Program Enrollment Confirmation - ' + programName;
-            msg.setSubject(subject);
-
-            String body =
-                'Hello ' + pe.hed__Contact__r.Name + ',\n\n' +
-                'We have received your Program Enrollment submission.\n\n' +
-                'Attached for your records:\n' +
-                '- Your submitted form responses (PDF)\n' +
-                '- Your invoice (PDF)\n\n' +
-                'Thank you,\n' +
-                'Implementation Science Training Program';
-            msg.setPlainTextBody(body);
+            if (confirmationTemplateId != null) {
+                msg.setTemplateId(confirmationTemplateId);
+            } else {
+                String programName = (pe.hed__Account__r != null) ? pe.hed__Account__r.Name : 'the program';
+                String subject = 'Program Enrollment Confirmation - ' + programName;
+                msg.setSubject(subject);
+                String body =
+                    'Hello ' + pe.hed__Contact__r.Name + ',\n\n' +
+                    'We have received your Program Enrollment submission.\n\n' +
+                    'Attached for your records:\n' +
+                    '- Your submitted form responses (PDF)\n' +
+                    '- Your invoice (PDF)\n\n' +
+                    'Thank you,\n' +
+                    'Implementation Science Training Program';
+                msg.setPlainTextBody(body);
+            }
 
             // Attach existing published Files already linked to the PE.
             // This prevents the side-effect of creating duplicate PDFs during email sending.

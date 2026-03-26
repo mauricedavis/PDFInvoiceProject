@@ -1,4 +1,7 @@
-public with sharing class ProgramEnrollmentStudentEmailQueueable implements Queueable {
+/**
+ * without sharing: readiness checks query Contact Files; same visibility issue as ProgramEnrollmentStudentEmail.
+ */
+public without sharing class ProgramEnrollmentStudentEmailQueueable implements Queueable {
 
     private final List<Id> peIds;
     private final Integer retry;
@@ -16,10 +19,10 @@ public with sharing class ProgramEnrollmentStudentEmailQueueable implements Queu
     public void execute(QueueableContext context) {
         if (peIds.isEmpty()) return;
 
-        // FormAssembly + invoice batch can take several async hops; keep this comfortably above typical delay.
-        Integer maxRetries = 15;
+        // FormAssembly may attach the responses PDF after invoice batch; allow many queueable hops.
+        Integer maxRetries = 40;
 
-        // Determine readiness: invoice PDF exists on each PE and Contact has at least one PDF response.
+        // Determine readiness: invoice PDF on PE and responses PDF on Contact and/or non-invoice PDF on PE.
         // In tests, we still evaluate readiness for coverage/behavior, but we never chain a new async job.
         Boolean allReady = true;
         for (Id peId : peIds) {
@@ -29,7 +32,7 @@ public with sharing class ProgramEnrollmentStudentEmailQueueable implements Queu
             }
 
             Id contactId = ProgramEnrollmentStudentEmail.getContactId(peId);
-            if (contactId == null || !ProgramEnrollmentStudentEmail.hasAnyResponsesPdf(contactId)) {
+            if (contactId == null || !ProgramEnrollmentStudentEmail.hasResponsesSourceForStudentEmail(peId, contactId)) {
                 allReady = false;
                 break;
             }

@@ -20,6 +20,83 @@ private class ProgramEnrollmentStudentEmail_Tests {
     }
 
     @IsTest
+    static void test_CopyResponsesPdfToProgramEnrollment_fromContact() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id, hed__Contact__c
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        ContentVersion cv = new ContentVersion(
+            Title         = 'CopyTest_Course Registration_.pdf',
+            PathOnClient  = 'c.pdf',
+            VersionData   = Blob.valueOf('copy-body'),
+            IsMajorVersion = true
+        );
+        insert cv;
+        Id docId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id LIMIT 1].ContentDocumentId;
+        insert new ContentDocumentLink(
+            ContentDocumentId = docId,
+            LinkedEntityId   = pe.hed__Contact__c,
+            ShareType        = 'V',
+            Visibility       = 'AllUsers'
+        );
+
+        Test.startTest();
+        ProgramEnrollmentStudentEmail.copyResponsesPdfToProgramEnrollment(pe.Id);
+        Test.stopTest();
+
+        Integer stableOnPe = [
+            SELECT COUNT()
+            FROM ContentDocumentLink
+            WHERE LinkedEntityId = :pe.Id
+              AND ContentDocument.Title = 'Course Registration Responses'
+        ];
+        System.assertEquals(1, stableOnPe, 'Copy should publish Course Registration Responses on the PE.');
+    }
+
+    @IsTest
+    static void test_CopyResponsesInvocable_delegatesToStudentEmail() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id, hed__Contact__c
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        ContentVersion cv = new ContentVersion(
+            Title         = 'Invocable_Course Registration_.pdf',
+            PathOnClient  = 'i.pdf',
+            VersionData   = Blob.valueOf('inv'),
+            IsMajorVersion = true
+        );
+        insert cv;
+        Id docId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :cv.Id LIMIT 1].ContentDocumentId;
+        insert new ContentDocumentLink(
+            ContentDocumentId = docId,
+            LinkedEntityId   = pe.hed__Contact__c,
+            ShareType        = 'V',
+            Visibility       = 'AllUsers'
+        );
+        ProgramEnrollmentCopyResponsesInvocable.ProgramEnrollmentRequest req =
+            new ProgramEnrollmentCopyResponsesInvocable.ProgramEnrollmentRequest();
+        req.programEnrollmentId = pe.Id;
+
+        Test.startTest();
+        ProgramEnrollmentCopyResponsesInvocable.copyResponsesPdfToProgramEnrollment(
+            new List<ProgramEnrollmentCopyResponsesInvocable.ProgramEnrollmentRequest>{ req }
+        );
+        Test.stopTest();
+
+        System.assert(
+            [
+                    SELECT COUNT()
+                    FROM ContentDocumentLink
+                    WHERE LinkedEntityId = :pe.Id
+                      AND ContentDocument.Title = 'Course Registration Responses'
+                ] > 0,
+            'Invocable should copy responses onto PE.'
+        );
+    }
+
+    @IsTest
     static void test_FullFlowWithBothPdfsViaQueueable() {
         hed__Program_Enrollment__c pe = [
             SELECT Id, hed__Contact__c
@@ -102,6 +179,54 @@ private class ProgramEnrollmentStudentEmail_Tests {
         System.assert(
             countStudentConfirmationActivity(pe.Id) > 0,
             'Should use any PDF File when no keyword match.'
+        );
+    }
+
+    @IsTest
+    static void test_ResponsesPdfOnlyOnProgramEnrollment_FormAssembly() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id, hed__Contact__c
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        // FormAssembly often publishes the registration PDF to the PE, not the Contact.
+        ContentVersion faCv = new ContentVersion(
+            Title                  = 'Student_TEST_Course Registration_.pdf',
+            PathOnClient           = 'fa.pdf',
+            VersionData            = Blob.valueOf('fa responses'),
+            IsMajorVersion         = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert faCv;
+        ContentVersion invCv = new ContentVersion(
+            Title                  = 'Invoice_PE-FA-PE-Only',
+            PathOnClient           = 'inv.pdf',
+            VersionData            = Blob.valueOf('invoice body'),
+            IsMajorVersion         = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert invCv;
+
+        System.assert(
+            !ProgramEnrollmentStudentEmail.hasAnyResponsesPdf(pe.hed__Contact__c),
+            'Contact should have no PDFs in this scenario.'
+        );
+        System.assert(
+            ProgramEnrollmentStudentEmail.hasNonInvoicePdfOnProgramEnrollment(pe.Id),
+            'PE should have a non-invoice PDF (FA responses).'
+        );
+        System.assert(
+            ProgramEnrollmentStudentEmail.hasResponsesSourceForStudentEmail(pe.Id, pe.hed__Contact__c),
+            'Readiness should pass when responses exist only on the PE.'
+        );
+
+        Test.startTest();
+        ProgramEnrollmentStudentEmail.sendStudentEmailInternal(new List<Id>{ pe.Id });
+        Test.stopTest();
+
+        System.assert(
+            countStudentConfirmationActivity(pe.Id) > 0,
+            'Should send student confirmation using PE-linked FA responses PDF.'
         );
     }
 
@@ -219,8 +344,7 @@ private class ProgramEnrollmentStudentEmail_Tests {
 
     @IsTest
     static void test_QueueableExecute_MaxRetrySkipsReadinessCheck() {
-        // Even if not ready, when retry >= maxRetries, the queueable skips readiness checks
-        // and calls internal send (which itself will skip if PDFs missing). This covers that branch.
+        // Not ready and retry at/above max: no send (internal send is only when allReady).
         Account acct = new Account(Name = 'Student Email Max Retry Program');
         insert acct;
         Contact c = new Contact(FirstName = 'Max', LastName = 'Retry', Email = 'max.retry.student@example.com');
@@ -233,7 +357,7 @@ private class ProgramEnrollmentStudentEmail_Tests {
         insert pe;
 
         Test.startTest();
-        new ProgramEnrollmentStudentEmailQueueable(new List<Id>{ pe.Id }, 8).execute(null);
+        new ProgramEnrollmentStudentEmailQueueable(new List<Id>{ pe.Id }, 40).execute(null);
         Test.stopTest();
 
         Integer sentCount = [
@@ -258,6 +382,192 @@ private class ProgramEnrollmentStudentEmail_Tests {
     static void test_HasInvoicePdfAndHasAnyResponsesPdf_NullIds() {
         System.assert(!ProgramEnrollmentStudentEmail.hasInvoicePdf(null), 'hasInvoicePdf(null) should be false.');
         System.assert(!ProgramEnrollmentStudentEmail.hasAnyResponsesPdf(null), 'hasAnyResponsesPdf(null) should be false.');
+        System.assert(!ProgramEnrollmentStudentEmail.hasNonInvoicePdfOnProgramEnrollment(null), 'PE null should be false.');
+        System.assert(!ProgramEnrollmentStudentEmail.hasResponsesSourceForStudentEmail(null, null), 'Null PE should be false.');
+    }
+
+    @IsTest
+    static void test_HasNonInvoicePdfOnPe_falseWhenOnlyInvoice() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id, hed__Contact__c
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        ContentVersion invOnly = new ContentVersion(
+            Title                  = 'Invoice_Only_Test',
+            PathOnClient           = 'inv.pdf',
+            VersionData            = Blob.valueOf('x'),
+            IsMajorVersion         = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert invOnly;
+        System.assert(
+            !ProgramEnrollmentStudentEmail.hasNonInvoicePdfOnProgramEnrollment(pe.Id),
+            'Invoice-only PE should not count as responses source.'
+        );
+        System.assert(
+            !ProgramEnrollmentStudentEmail.hasResponsesSourceForStudentEmail(pe.Id, pe.hed__Contact__c),
+            'No contact PDF and only invoice on PE: not ready.'
+        );
+    }
+
+    @IsTest
+    static void test_QueueableReadyWhenResponsesOnlyOnPe() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id, hed__Contact__c
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        ContentVersion faCv = new ContentVersion(
+            Title                  = 'FA_On_PE_Only.pdf',
+            PathOnClient           = 'fa.pdf',
+            VersionData            = Blob.valueOf('fa'),
+            IsMajorVersion         = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert faCv;
+        ContentVersion invCv = new ContentVersion(
+            Title                  = 'Invoice_PE-QPE',
+            PathOnClient           = 'i.pdf',
+            VersionData            = Blob.valueOf('i'),
+            IsMajorVersion         = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert invCv;
+
+        Test.startTest();
+        System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(new List<Id>{ pe.Id }));
+        Test.stopTest();
+
+        System.assert(
+            countStudentConfirmationActivity(pe.Id) > 0,
+            'Queueable should treat PE-only FA PDF as responses and send.'
+        );
+    }
+
+    @IsTest
+    static void test_LogReadinessTimeoutTasks_insertsTaskWhenEnabled() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        ProgramEnrollmentStudentEmail.allowLogReadinessTimeoutTasksInTest = true;
+        try {
+            ProgramEnrollmentStudentEmail.logReadinessTimeoutTasks(new List<Id>{ pe.Id });
+        } finally {
+            ProgramEnrollmentStudentEmail.allowLogReadinessTimeoutTasksInTest = false;
+        }
+        Integer taskCnt = [
+            SELECT COUNT()
+            FROM Task
+            WHERE WhatId = :pe.Id
+              AND Subject LIKE 'Student confirmation NOT sent:%'
+        ];
+        System.assert(taskCnt > 0, 'Timeout log task should be inserted when test flag is on.');
+    }
+
+    @IsTest
+    static void test_OrgWideEmailLookupPath_exercisedInTest() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id, hed__Contact__c
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        ContentVersion faCv = new ContentVersion(
+            Title                  = 'OWEA_Coverage_FA.pdf',
+            PathOnClient           = 'fa.pdf',
+            VersionData            = Blob.valueOf('fa'),
+            IsMajorVersion         = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert faCv;
+        ContentVersion invCv = new ContentVersion(
+            Title                  = 'Invoice_OWEA-Cov',
+            PathOnClient           = 'i.pdf',
+            VersionData            = Blob.valueOf('i'),
+            IsMajorVersion         = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert invCv;
+
+        ProgramEnrollmentStudentEmail.resetOweaCacheForTest();
+        ProgramEnrollmentStudentEmail.allowOrgWideEmailLookupInTest = true;
+        try {
+            Test.startTest();
+            ProgramEnrollmentStudentEmail.sendStudentEmailInternal(new List<Id>{ pe.Id });
+            Test.stopTest();
+        } finally {
+            ProgramEnrollmentStudentEmail.allowOrgWideEmailLookupInTest = false;
+            ProgramEnrollmentStudentEmail.resetOweaCacheForTest();
+        }
+        System.assert(
+            countStudentConfirmationActivity(pe.Id) > 0,
+            'Send path with OWEA lookup enabled in test should still complete.'
+        );
+    }
+
+    @IsTest
+    static void test_EnsureResponses_requeriesVersionDataWhenBodyNull() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        ContentVersion src = new ContentVersion(
+            Title = 'FA_Source_For_Requery.pdf',
+            PathOnClient = 'src.pdf',
+            VersionData = Blob.valueOf('synthetic pdf body for requery path'),
+            IsMajorVersion = true
+        );
+        insert src;
+        Id docId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :src.Id LIMIT 1].ContentDocumentId;
+
+        Test.startTest();
+        Id newVerId = ProgramEnrollmentStudentEmail.testEnsureResponsesFromContentDocumentIdOnly(pe.Id, docId);
+        Test.stopTest();
+
+        System.assertNotEquals(null, newVerId, 'Should insert stable ContentVersion on PE using re-queried VersionData.');
+        Integer stableOnPe = [
+            SELECT COUNT()
+            FROM ContentDocumentLink
+            WHERE LinkedEntityId = :pe.Id
+              AND ContentDocument.Title = 'Course Registration Responses'
+        ];
+        System.assertEquals(1, stableOnPe, 'Stable Course Registration Responses file should be linked to PE.');
+    }
+
+    @IsTest
+    static void test_CopyResponsesPdf_withoutContact_whenPdfOnlyOnPe() {
+        Account acct = new Account(Name = 'CopyResponses No-Contact PE');
+        insert acct;
+        hed__Program_Enrollment__c pe = new hed__Program_Enrollment__c(
+            hed__Account__c = acct.Id,
+            hed__Enrollment_Status__c = 'Payment Pending'
+        );
+        insert pe;
+        ContentVersion faOnPe = new ContentVersion(
+            Title = 'FormAssembly_On_PE_Only.pdf',
+            PathOnClient = 'fa.pdf',
+            VersionData = Blob.valueOf('responses on pe'),
+            IsMajorVersion = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert faOnPe;
+
+        Test.startTest();
+        ProgramEnrollmentStudentEmail.copyResponsesPdfToProgramEnrollment(pe.Id);
+        Test.stopTest();
+
+        System.assert(
+            [
+                    SELECT COUNT()
+                    FROM ContentDocumentLink
+                    WHERE LinkedEntityId = :pe.Id
+                      AND ContentDocument.Title = 'Course Registration Responses'
+                ] > 0,
+            'copyResponsesPdfToProgramEnrollment should work when Contact is null but a non-invoice PDF is on the PE.'
+        );
     }
 
     /** Production logs EmailMessage; unit tests log Task. Count either (exclude legacy dedupe-token tasks). */

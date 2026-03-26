@@ -14,6 +14,9 @@ deploy-options.json
 # LWC Jest coverage reports
 coverage/
 
+# Accidental CLI artifact (empty file from malformed sf flags)
+--source-dir
+
 # Logs
 logs
 *.log

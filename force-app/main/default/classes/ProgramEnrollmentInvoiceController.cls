@@ -143,6 +143,18 @@ public without sharing class ProgramEnrollmentInvoiceController {
     }
 
     /**
+     * Flow/Invocable actions that call generateAttachAndEmail directly never hit ProgramEnrollmentInvoiceBatch.finish,
+     * so student confirmation (Course Registration + invoice PDFs) was never chained. Trigger→Queueable→Batch already
+     * enqueues ProgramEnrollmentStudentEmailQueueable; calling this from invocables is safe (sendStudentEmailInternal dedupes).
+     */
+    public static void enqueueStudentConfirmationAfterInvoice(Id programEnrollmentId) {
+        if (programEnrollmentId == null || Test.isRunningTest()) {
+            return;
+        }
+        System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(new List<Id>{ programEnrollmentId }));
+    }
+
+    /**
      * Deletes generated invoice file(s) on the PE (titles starting with "Invoice_") and creates a new PDF.
      * Safe: only removes files we created with Title = Invoice_<PE Name>.
      * Does not send emails.

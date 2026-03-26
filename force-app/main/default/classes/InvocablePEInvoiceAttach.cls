@@ -4,6 +4,7 @@ public with sharing class InvocablePEInvoiceAttach {
         List<Id> outIds = new List<Id>();
         for (Id peId : programEnrollmentIds) {
             ProgramEnrollmentInvoiceController.generateAttachAndEmail(peId);
+            ProgramEnrollmentInvoiceController.enqueueStudentConfirmationAfterInvoice(peId);
             outIds.add(peId);
         }
         return outIds;

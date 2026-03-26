@@ -16,6 +16,7 @@ public with sharing class PEInvoiceActionOne {
                 r.ProgramEnrollmentId,
                 r.CcAddresses
             );
+            ProgramEnrollmentInvoiceController.enqueueStudentConfirmationAfterInvoice(r.ProgramEnrollmentId);
 
             // Return the PE Id to the Flow as a simple acknowledgment
             outIds.add(r.ProgramEnrollmentId);

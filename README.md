@@ -1,3 +1,13 @@
+# PDFInvoiceProject (UCSF)
+
+Salesforce metadata and Apex for **Program Enrollment** invoice PDFs, **Course Registration** (FormAssembly) file handling on the PE, **student confirmation** email (responses + invoice attachments), and **Program Office** notifications.
+
+**Deploy to production (example):** `.\Push_UCSF_Prod.ps1 -OrgAlias ucsf-prod -QuickTests` (see script for prompts and test options).
+
+**Important:** Invoice generation via **Flow invocables** that call `generateAttachAndEmail` must also chain **student confirmation**. `ProgramEnrollmentInvoiceController.enqueueStudentConfirmationAfterInvoice` is invoked from `InvocablePEInvoice`, `InvocablePEInvoiceAttach`, `PEInvoiceActionOne`, `PEInvoiceAttachByRecord`, and `PEInvoiceFlowByRecord` so the same path as **trigger → `ProgramEnrollmentInvoiceQueueable` → batch `finish`** is not required for the two-PDF student email.
+
+---
+
 # Salesforce DX Project: Next Steps
 
 Now that you’ve created a Salesforce DX project, what’s next? Here are some documentation resources to get you started.

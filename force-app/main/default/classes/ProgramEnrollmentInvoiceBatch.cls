@@ -33,7 +33,7 @@ public without sharing class ProgramEnrollmentInvoiceBatch implements Database.B
     public void execute(Database.BatchableContext bc, List<Id> scope) {
         for (Id peId : scope) {
             try {
-                ProgramEnrollmentInvoiceController.generateAttachAndEmail(peId);
+                ProgramEnrollmentInvoiceController.generateAttachAndEmailForBatch(peId);
             } catch (Exception e) {
                 System.debug('ProgramEnrollmentInvoiceBatch execute for ' + peId + ': ' + e.getTypeName() + ' - ' + e.getMessage());
             }

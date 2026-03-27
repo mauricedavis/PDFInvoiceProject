@@ -228,6 +228,70 @@ private class ProgramEnrollmentStudentEmail_Tests {
             countStudentConfirmationActivity(pe.Id) > 0,
             'Should send student confirmation using PE-linked FA responses PDF.'
         );
+        Integer stableCopies = [
+            SELECT COUNT()
+            FROM ContentDocumentLink
+            WHERE LinkedEntityId = :pe.Id
+              AND ContentDocument.Title = 'Course Registration Responses'
+        ];
+        System.assertEquals(
+            0,
+            stableCopies,
+            'PE-native path must not insert stable Course Registration Responses copy.'
+        );
+    }
+
+    @IsTest
+    static void test_QueueableReadyWhenContactNull_pdfsOnPe_noReadinessTimeoutTask() {
+        Account acct = new Account(Name = 'Student Email No-Contact Queueable');
+        insert acct;
+        hed__Program_Enrollment__c pe = new hed__Program_Enrollment__c(
+            hed__Account__c = acct.Id,
+            hed__Enrollment_Status__c = 'Payment Pending'
+        );
+        insert pe;
+        ContentVersion faCv = new ContentVersion(
+            Title = 'FA_Queueable_NoContact.pdf',
+            PathOnClient = 'fa.pdf',
+            VersionData = Blob.valueOf('fa'),
+            IsMajorVersion = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert faCv;
+        ContentVersion invCv = new ContentVersion(
+            Title = 'Invoice_Queueable_NoContact',
+            PathOnClient = 'inv.pdf',
+            VersionData = Blob.valueOf('inv'),
+            IsMajorVersion = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert invCv;
+
+        ProgramEnrollmentStudentEmail.allowLogReadinessTimeoutTasksInTest = true;
+        try {
+            Test.startTest();
+            new ProgramEnrollmentStudentEmailQueueable(new List<Id>{ pe.Id }, 40).execute(null);
+            Test.stopTest();
+        } finally {
+            ProgramEnrollmentStudentEmail.allowLogReadinessTimeoutTasksInTest = false;
+        }
+
+        Integer timeoutTasks = [
+            SELECT COUNT()
+            FROM Task
+            WHERE WhatId = :pe.Id
+              AND Subject LIKE 'Student confirmation NOT sent:%'
+        ];
+        System.assertEquals(
+            0,
+            timeoutTasks,
+            'Readiness must not require Contact when non-invoice PDF and invoice exist on PE.'
+        );
+        System.assertEquals(
+            0,
+            countStudentConfirmationActivity(pe.Id),
+            'No student email without Contact and email on PE.'
+        );
     }
 
     @IsTest

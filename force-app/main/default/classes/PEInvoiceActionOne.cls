@@ -11,14 +11,16 @@ public with sharing class PEInvoiceActionOne {
         for (Req r : reqs) {
             if (r == null || r.ProgramEnrollmentId == null) continue;
 
-            // Perform the side effect (generate, attach, and email invoice)
-            ProgramEnrollmentInvoiceController.generateAttachAndEmail(
-                r.ProgramEnrollmentId,
-                r.CcAddresses
-            );
-            ProgramEnrollmentInvoiceController.enqueueStudentConfirmationAfterInvoice(r.ProgramEnrollmentId);
+            // Always enqueue student confirmation even if generateAttachAndEmail throws (e.g. lock/contention).
+            try {
+                ProgramEnrollmentInvoiceController.generateAttachAndEmail(
+                    r.ProgramEnrollmentId,
+                    r.CcAddresses
+                );
+            } finally {
+                ProgramEnrollmentInvoiceController.enqueueStudentConfirmationAfterInvoice(r.ProgramEnrollmentId);
+            }
 
-            // Return the PE Id to the Flow as a simple acknowledgment
             outIds.add(r.ProgramEnrollmentId);
         }
         return outIds;

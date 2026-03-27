@@ -32,7 +32,8 @@ public without sharing class ProgramEnrollmentStudentEmailQueueable implements Q
             }
 
             Id contactId = ProgramEnrollmentStudentEmail.getContactId(peId);
-            if (contactId == null || !ProgramEnrollmentStudentEmail.hasResponsesSourceForStudentEmail(peId, contactId)) {
+            // Responses may exist only on the PE (FormAssembly); do not require Contact for readiness.
+            if (!ProgramEnrollmentStudentEmail.hasResponsesSourceForStudentEmail(peId, contactId)) {
                 allReady = false;
                 break;
             }

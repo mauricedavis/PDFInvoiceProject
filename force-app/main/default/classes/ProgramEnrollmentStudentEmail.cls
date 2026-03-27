@@ -10,6 +10,7 @@
  *
  * Body/subject: uses active EmailTemplate from ProgramEnrollmentEmailTemplateConfig (ucsf-prod) when present;
  * otherwise the inline plain-text confirmation (tests/sandboxes without that template).
+ * With a template, PDFs are attached via Messaging.EmailFileAttachment (VersionData) when both load; else entity attachments.
  */
 public without sharing class ProgramEnrollmentStudentEmail {
 
@@ -17,7 +18,7 @@ public without sharing class ProgramEnrollmentStudentEmail {
     private static final String PROGRAM_OFFICE_FROM_EMAIL = 'implementationscience@ucsf.edu';
 
     private static Id cachedProgramOfficeOweaId;
-    private static Boolean programOfficeOweaLookupDone;
+    private static Boolean programOfficeOweaLookupDone = false;
 
     @TestVisible
     private static Boolean allowOrgWideEmailLookupInTest = false;
@@ -67,6 +68,13 @@ public without sharing class ProgramEnrollmentStudentEmail {
         public String title;
         public Blob body;
         public Id contentDocumentId; // present when sourced from Files
+    }
+
+    /** Result of resolving which ContentVersion to attach as the registration/responses PDF. */
+    private class StudentEmailResponsesResolution {
+        Id contentVersionId;
+        /** When true, run dedupe against stable copy + invoice titles (legacy copy-on-send path). */
+        Boolean runStableCopyDedupe;
     }
 
     @InvocableMethod(
@@ -138,51 +146,28 @@ public without sharing class ProgramEnrollmentStudentEmail {
         return t;
     }
 
-    private static PdfDoc getLatestInvoicePdf(Id peId) {
-        if (peId == null) return null;
-
-        // Find the most recent linked PDF that looks like the invoice created by our controller.
-        List<ContentDocumentLink> links = [
-            SELECT ContentDocument.Title,
-                   ContentDocument.LatestPublishedVersionId,
-                   ContentDocument.FileType
-            FROM ContentDocumentLink
-            WHERE LinkedEntityId = :peId
-              AND ContentDocument.FileType = 'PDF'
-              AND (ContentDocument.Title LIKE 'Invoice_%' OR ContentDocument.Title LIKE '%Invoice%')
-            ORDER BY SystemModstamp DESC
-            LIMIT 1
-        ];
-        if (links.isEmpty()) return null;
-
-        ContentVersion cv = [
-            SELECT Title, VersionData
-            FROM ContentVersion
-            WHERE Id = :links[0].ContentDocument.LatestPublishedVersionId
-            LIMIT 1
-        ];
-
-        PdfDoc d = new PdfDoc();
-        d.title = cv.Title;
-        d.body = cv.VersionData;
-        d.contentDocumentId = null;
-        return d;
-    }
-
     private static Id getLatestInvoiceVersionId(Id peId) {
-        if (peId == null) return null;
-
+        if (peId == null) {
+            return null;
+        }
+        Set<Id> linkTargets = linkEntityIdsForProgramEnrollmentPdfSearch(peId);
+        if (linkTargets.isEmpty()) {
+            return null;
+        }
+        List<Id> targetList = new List<Id>(linkTargets);
         List<ContentDocumentLink> links = [
             SELECT ContentDocument.LatestPublishedVersionId,
                    ContentDocument.Title
             FROM ContentDocumentLink
-            WHERE LinkedEntityId = :peId
+            WHERE LinkedEntityId IN :targetList
               AND ContentDocument.FileType = 'PDF'
               AND (ContentDocument.Title LIKE 'Invoice_%' OR ContentDocument.Title LIKE '%Invoice%')
             ORDER BY SystemModstamp DESC
             LIMIT 1
         ];
-        if (links.isEmpty() || links[0].ContentDocument.LatestPublishedVersionId == null) return null;
+        if (links.isEmpty() || links[0].ContentDocument.LatestPublishedVersionId == null) {
+            return null;
+        }
         return links[0].ContentDocument.LatestPublishedVersionId;
     }
 
@@ -201,10 +186,15 @@ public without sharing class ProgramEnrollmentStudentEmail {
         if (peId == null) {
             return false;
         }
+        Set<Id> linkTargets = linkEntityIdsForProgramEnrollmentPdfSearch(peId);
+        if (linkTargets.isEmpty()) {
+            return false;
+        }
+        List<Id> targetList = new List<Id>(linkTargets);
         List<ContentDocumentLink> links = [
             SELECT ContentDocument.Title
             FROM ContentDocumentLink
-            WHERE LinkedEntityId = :peId
+            WHERE LinkedEntityId IN :targetList
               AND ContentDocument.FileType = 'PDF'
             ORDER BY SystemModstamp DESC
             LIMIT 50
@@ -436,6 +426,74 @@ public without sharing class ProgramEnrollmentStudentEmail {
     }
 
     /**
+     * Latest non-invoice PDF on the PE (or sfProgramEnrollmentId__c), by ContentDocumentLink.SystemModstamp.
+     * Does not load VersionData — for entity attachment Ids only.
+     */
+    private static Id getLatestNonInvoicePdfVersionIdOnProgramEnrollment(Id peId) {
+        if (peId == null) {
+            return null;
+        }
+        Set<Id> linkTargets = linkEntityIdsForProgramEnrollmentPdfSearch(peId);
+        if (linkTargets.isEmpty()) {
+            return null;
+        }
+        List<Id> targetList = new List<Id>(linkTargets);
+        List<ContentDocumentLink> peLinks = [
+            SELECT ContentDocument.Title, ContentDocument.LatestPublishedVersionId
+            FROM ContentDocumentLink
+            WHERE LinkedEntityId IN :targetList
+              AND ContentDocument.FileType = 'PDF'
+            ORDER BY SystemModstamp DESC
+            LIMIT 50
+        ];
+        for (ContentDocumentLink lnk : peLinks) {
+            if (lnk.ContentDocument == null || lnk.ContentDocument.LatestPublishedVersionId == null) {
+                continue;
+            }
+            if (titleLooksLikeInvoice(lnk.ContentDocument.Title)) {
+                continue;
+            }
+            return lnk.ContentDocument.LatestPublishedVersionId;
+        }
+        return null;
+    }
+
+    /**
+     * PE-native registration PDF first (no stable copy). If none, Contact/Attachment path then
+     * ensureResponsesOnProgramEnrollment (legacy copy to stable title on PE).
+     */
+    private static StudentEmailResponsesResolution resolveResponsesAttachmentForStudentEmail(Id peId, Id contactId) {
+        StudentEmailResponsesResolution out = new StudentEmailResponsesResolution();
+        out.runStableCopyDedupe = false;
+
+        Id peNativeVersionId = getLatestNonInvoicePdfVersionIdOnProgramEnrollment(peId);
+        if (peNativeVersionId != null) {
+            out.contentVersionId = peNativeVersionId;
+            return out;
+        }
+
+        PdfDoc responses = getLatestResponsesPdf(contactId, peId);
+        if (responses == null) {
+            return out;
+        }
+
+        Id inserted = ensureResponsesOnProgramEnrollment(peId, contactId, responses);
+        Id verId = inserted != null ? inserted : getResponsesVersionIdOnProgramEnrollment(peId);
+        if (verId == null && responses.contentDocumentId != null) {
+            List<ContentVersion> v = [
+                SELECT Id
+                FROM ContentVersion
+                WHERE ContentDocumentId = :responses.contentDocumentId AND IsLatest = TRUE
+                LIMIT 1
+            ];
+            verId = v.isEmpty() ? null : v[0].Id;
+        }
+        out.contentVersionId = verId;
+        out.runStableCopyDedupe = true;
+        return out;
+    }
+
+    /**
      * Resolves PDF bytes for publishing stable "Course Registration Responses" on the PE.
      * When body was not loaded (e.g. edge cases) but contentDocumentId is set, loads latest VersionData.
      */
@@ -543,11 +601,18 @@ public without sharing class ProgramEnrollmentStudentEmail {
 
     // ===== helpers used by the Queueable =====
     public static Boolean hasInvoicePdf(Id peId) {
-        if (peId == null) return false;
+        if (peId == null) {
+            return false;
+        }
+        Set<Id> linkTargets = linkEntityIdsForProgramEnrollmentPdfSearch(peId);
+        if (linkTargets.isEmpty()) {
+            return false;
+        }
+        List<Id> targetList = new List<Id>(linkTargets);
         return [
             SELECT COUNT()
             FROM ContentDocumentLink
-            WHERE LinkedEntityId = :peId
+            WHERE LinkedEntityId IN :targetList
               AND ContentDocument.FileType = 'PDF'
               AND (ContentDocument.Title LIKE 'Invoice_%' OR ContentDocument.Title LIKE '%Invoice%')
         ] > 0;
@@ -587,6 +652,49 @@ public without sharing class ProgramEnrollmentStudentEmail {
      * Creates Tasks on each PE when the student-email queueable exhausted retries without finding
      * both invoice + responses PDFs (prod visibility; skipped in @IsTest).
      */
+    /**
+     * Builds file attachments from ContentVersion.VersionData in a stable order (responses, then invoice).
+     * Used when sending with an EmailTemplate so both PDFs attach reliably (entity attachments + template can drop files).
+     */
+    private static List<Messaging.EmailFileAttachment> buildOrderedPdfFileAttachmentsFromContentVersions(
+        Id responsesContentVersionId,
+        Id invoiceContentVersionId
+    ) {
+        List<Id> orderedIds = new List<Id>{ responsesContentVersionId, invoiceContentVersionId };
+        Map<Id, ContentVersion> cvMap = new Map<Id, ContentVersion>(
+            [
+                SELECT Id, Title, PathOnClient, VersionData, FileExtension
+                FROM ContentVersion
+                WHERE Id IN :orderedIds
+            ]
+        );
+        List<Messaging.EmailFileAttachment> attachments = new List<Messaging.EmailFileAttachment>();
+        for (Id cvId : orderedIds) {
+            ContentVersion cv = cvMap.get(cvId);
+            if (cv == null || cv.VersionData == null) {
+                continue;
+            }
+            Messaging.EmailFileAttachment a = new Messaging.EmailFileAttachment();
+            a.setFileName(fileNameForStudentEmailAttachment(cv));
+            a.setBody(cv.VersionData);
+            a.setContentType('application/pdf');
+            attachments.add(a);
+        }
+        return attachments;
+    }
+
+    private static String fileNameForStudentEmailAttachment(ContentVersion cv) {
+        if (!String.isBlank(cv.PathOnClient)) {
+            return cv.PathOnClient;
+        }
+        String ext = String.isBlank(cv.FileExtension) ? 'pdf' : cv.FileExtension;
+        String base = String.isBlank(cv.Title) ? 'attachment' : cv.Title;
+        if (!base.toLowerCase().endsWith('.' + ext.toLowerCase())) {
+            base = base + '.' + ext;
+        }
+        return base;
+    }
+
     public static void logReadinessTimeoutTasks(List<Id> peIds) {
         if (peIds == null || peIds.isEmpty()) {
             return;
@@ -705,17 +813,22 @@ public without sharing class ProgramEnrollmentStudentEmail {
             if (String.isBlank(pe.hed__Contact__r.Email)) continue;
             if (alreadySentPeIds.contains(pe.Id)) continue;
 
-            PdfDoc responses = getLatestResponsesPdf(pe.hed__Contact__c, pe.Id);
-            PdfDoc invoice = getLatestInvoicePdf(pe.Id);
+            if (!hasInvoicePdf(pe.Id)) {
+                continue;
+            }
 
-            // If either PDF is missing, do not send.
-            // Some unit-test/attachment edge-cases can yield null bodies; we handle that below
-            // by substituting an empty blob while still attaching a ContentVersion.
-            if (responses == null || invoice == null) continue;
+            StudentEmailResponsesResolution responsesRes = resolveResponsesAttachmentForStudentEmail(
+                pe.Id,
+                pe.hed__Contact__c
+            );
+            if (responsesRes.contentVersionId == null) {
+                continue;
+            }
 
-            // Only once we're actually ready to send, ensure the responses PDF is present on the PE (single copy).
-            // Returning the inserted ContentVersion id avoids relying on ContentDocumentLink visibility in the same transaction.
-            ensureResponsesOnProgramEnrollment(pe.Id, pe.hed__Contact__c, responses);
+            Id invoiceVersionId = getLatestInvoiceVersionId(pe.Id);
+            if (invoiceVersionId == null) {
+                continue;
+            }
 
             Messaging.SingleEmailMessage msg = new Messaging.SingleEmailMessage();
             msg.setTargetObjectId(pe.hed__Contact__c);
@@ -746,22 +859,23 @@ public without sharing class ProgramEnrollmentStudentEmail {
                 msg.setPlainTextBody(body);
             }
 
-            // Attach existing published Files already linked to the PE.
-            // This prevents the side-effect of creating duplicate PDFs during email sending.
-            Id responsesVersionId = ensureResponsesOnProgramEnrollment(pe.Id, pe.hed__Contact__c, responses);
-            if (responsesVersionId == null) {
-                responsesVersionId = getResponsesVersionIdOnProgramEnrollment(pe.Id);
-            }
-            Id invoiceVersionId = getLatestInvoiceVersionId(pe.Id);
-
-            if (responsesVersionId == null || invoiceVersionId == null) continue;
-
-            if (!Test.isRunningTest()) {
-                // Clean up any legacy extra PDFs already linked to this PE.
-                dedupePdfLinksForPe(pe.Id, invoiceVersionId, responsesVersionId);
+            if (!Test.isRunningTest() && responsesRes.runStableCopyDedupe) {
+                dedupePdfLinksForPe(pe.Id, invoiceVersionId, responsesRes.contentVersionId);
             }
 
-            msg.setEntityAttachments(new List<Id>{ responsesVersionId, invoiceVersionId });
+            if (confirmationTemplateId != null) {
+                List<Messaging.EmailFileAttachment> fileAtts = buildOrderedPdfFileAttachmentsFromContentVersions(
+                    responsesRes.contentVersionId,
+                    invoiceVersionId
+                );
+                if (fileAtts.size() == 2) {
+                    msg.setFileAttachments(fileAtts);
+                } else {
+                    msg.setEntityAttachments(new List<Id>{ responsesRes.contentVersionId, invoiceVersionId });
+                }
+            } else {
+                msg.setEntityAttachments(new List<Id>{ responsesRes.contentVersionId, invoiceVersionId });
+            }
 
             emails.add(msg);
             peIdsForEmails.add(pe.Id);

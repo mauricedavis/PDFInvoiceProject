@@ -30,7 +30,6 @@ public without sharing class ProgramEnrollmentInvoiceQueueable implements Queuea
 
         for (Id peId : peIds) {
             try {
-                // If an invoice file already exists, do not generate again.
                 Boolean hasInvoice = [
                     SELECT COUNT()
                     FROM ContentDocumentLink
@@ -39,36 +38,31 @@ public without sharing class ProgramEnrollmentInvoiceQueueable implements Queuea
                       AND (ContentDocument.Title LIKE 'Invoice_%' OR ContentDocument.Title LIKE '%Invoice%')
                 ] > 0;
                 if (hasInvoice) {
-                    alreadyHasInvoice.add(peId);
-                    System.debug('PE ' + peId + ' → invoice already exists; skipping generation.');
-                    continue;
+                    if (ProgramEnrollmentInvoiceController.isProgramEnrollmentInvoiceStale(peId)) {
+                        ProgramEnrollmentInvoiceController.deleteGeneratedInvoiceContentDocuments(peId);
+                        System.debug('PE ' + peId + ' → stale invoice vs Course Connections; removed for regeneration.');
+                    } else {
+                        alreadyHasInvoice.add(peId);
+                        System.debug('PE ' + peId + ' → invoice already exists; skipping generation.');
+                        continue;
+                    }
                 }
 
                 // -------------------------------
                 // 1) Determine readiness
                 // -------------------------------
 
-                // A) Expected = # of Term Enrollments
-                Integer expectedCount = [
+                Boolean isReady = ProgramEnrollmentInvoiceController.isReadyForInvoiceGeneration(peId);
+                Integer termEnrollmentCount = [
                     SELECT COUNT()
                     FROM Term_Enrollment__c
                     WHERE Program_Enrollment__c = :peId
                 ];
-
-                // B) Actual = # of Course Enrollments tied to Term Enrollments of this PE
-                Integer actualCount = [
-                    SELECT COUNT()
-                    FROM hed__Course_Enrollment__c
-                    WHERE Term_Enrollment__r.Program_Enrollment__c = :peId
-                ];
-
-                // Readiness for invoice generation is based on enrollments only.
-                // (Student email readiness is handled separately in ProgramEnrollmentStudentEmailQueueable.)
-                Boolean isReady = (expectedCount > 0) && (actualCount >= expectedCount);
+                Integer actualCount = ProgramEnrollmentInvoiceController.countCourseConnectionsForProgramEnrollment(peId);
 
                 System.debug('PE ' + peId + 
-                             ' → TermEnrollments=' + expectedCount +
-                             ', CourseEnrollments=' + actualCount + 
+                             ' → TermEnrollments=' + termEnrollmentCount +
+                             ', CourseConnections=' + actualCount + 
                              ', isReady=' + isReady);
 
                 if (!isReady) {

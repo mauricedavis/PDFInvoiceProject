@@ -4,6 +4,9 @@
 
 package.xml
 
+# Flow archival copies (not deployed; v18 snapshot for revert/diff)
+flow-snapshots/**
+
 # LWC configuration files
 **/jsconfig.json
 **/.eslintrc.json

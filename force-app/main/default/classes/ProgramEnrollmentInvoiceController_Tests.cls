@@ -1,6 +1,22 @@
 @isTest
 private class ProgramEnrollmentInvoiceController_Tests {
 
+    /** PE that has Term_Enrollment__c + hed__Course_Enrollment__c from @testSetup. */
+    private static Id programEnrollmentReadyForInvoiceId() {
+        List<hed__Course_Enrollment__c> rows = [
+            SELECT Term_Enrollment__r.Program_Enrollment__c
+            FROM hed__Course_Enrollment__c
+            WHERE Term_Enrollment__c != null
+              AND Term_Enrollment__r.Program_Enrollment__c != null
+            LIMIT 1
+        ];
+        System.assert(
+            !rows.isEmpty(),
+            'testSetup must create hed__Course_Enrollment__c linked to Term_Enrollment__c and Program Enrollment.'
+        );
+        return rows[0].Term_Enrollment__r.Program_Enrollment__c;
+    }
+
     /**
      * Test data:
      * - One "ready" Program Enrollment with:
@@ -89,36 +105,28 @@ private class ProgramEnrollmentInvoiceController_Tests {
 
     @isTest
     static void test_ControllerGeneratesInvoiceFile() {
-        hed__Program_Enrollment__c pe = [
-            SELECT Id
-            FROM hed__Program_Enrollment__c
-            LIMIT 1
-        ];
+        Id peId = programEnrollmentReadyForInvoiceId();
 
         Test.startTest();
-        ProgramEnrollmentInvoiceController.generateAttachAndEmail(pe.Id);
+        ProgramEnrollmentInvoiceController.generateAttachAndEmail(peId);
         Test.stopTest();
 
         // Verify at least one ContentDocumentLink (invoice or responses) now exists
         List<ContentDocumentLink> links = [
             SELECT Id
             FROM ContentDocumentLink
-            WHERE LinkedEntityId = :pe.Id
+            WHERE LinkedEntityId = :peId
         ];
         System.assert(!links.isEmpty(), 'Expected at least one file linked to the Program Enrollment.');
     }
 
     @isTest
     static void test_ControllerVFConstructorAndGetters() {
-        hed__Program_Enrollment__c pe = [
-            SELECT Id
-            FROM hed__Program_Enrollment__c
-            LIMIT 1
-        ];
+        Id peId = programEnrollmentReadyForInvoiceId();
 
         // Simulate Visualforce context for PDFInvoiceActionOne
         PageReference pr = Page.PDFInvoiceActionOne;
-        pr.getParameters().put('id', pe.Id);
+        pr.getParameters().put('id', peId);
         Test.setCurrentPage(pr);
 
         Test.startTest();
@@ -131,25 +139,94 @@ private class ProgramEnrollmentInvoiceController_Tests {
         Test.stopTest();
 
         System.assertNotEquals(null, peLoaded, 'Controller should load a Program Enrollment.');
+        System.assertEquals(1, courses.size(), 'Invoice should list Course Connections from Term_Enrollment → PE path.');
+    }
+
+    @isTest
+    static void test_CourseConnectionWhereClause_coversTermAndOptionalDirectPe() {
+        String w = ProgramEnrollmentInvoiceController.courseConnectionWhereClauseForProgramEnrollment();
+        System.assert(w.contains('Term_Enrollment__r.Program_Enrollment__c'), w);
+        if (Schema.SObjectType.hed__Course_Enrollment__c.fields.getMap().containsKey('hed__Program_Enrollment__c')) {
+            System.assert(w.contains('hed__Program_Enrollment__c'), w);
+        }
+        if (Schema.SObjectType.hed__Course_Enrollment__c.fields.getMap().containsKey('Program_Enrollment__c')) {
+            System.assert(w.contains('Program_Enrollment__c'), w);
+        }
+    }
+
+    @isTest
+    static void test_TriggerCore_nullOrEmptyNewRows_noOp() {
+        CourseEnrollmentInvoiceTriggerCore.afterInsertOrUpdate(null, null, false);
+        CourseEnrollmentInvoiceTriggerCore.afterInsertOrUpdate(new List<hed__Course_Enrollment__c>(), null, false);
+        System.assert(true);
+    }
+
+    @isTest
+    static void test_CountCourseConnectionsForProgramEnrollment() {
+        Id peId = programEnrollmentReadyForInvoiceId();
+        System.assertEquals(1, ProgramEnrollmentInvoiceController.countCourseConnectionsForProgramEnrollment(peId));
+    }
+
+    /**
+     * Exercises CourseEnrollmentInvoiceTrigger update path when hed__Program_Enrollment__c is populated (coverage).
+     */
+    @isTest
+    static void test_CourseEnrollmentTrigger_updateSetsHedProgramEnrollment() {
+        if (!Schema.SObjectType.hed__Course_Enrollment__c.fields.getMap().containsKey('hed__Program_Enrollment__c')) {
+            return;
+        }
+        Id peId = programEnrollmentReadyForInvoiceId();
+        hed__Course_Enrollment__c ce = [
+            SELECT Id
+            FROM hed__Course_Enrollment__c
+            WHERE Term_Enrollment__r.Program_Enrollment__c = :peId
+            LIMIT 1
+        ];
+        ce.put('hed__Program_Enrollment__c', peId);
+        Test.startTest();
+        update ce;
+        Test.stopTest();
+        System.assertNotEquals(null, ce.Id);
+    }
+
+    /** Moves Course Connection to another Term on the same PE (Trigger.isUpdate + Trigger.old paths). */
+    @isTest
+    static void test_CourseEnrollmentTrigger_updateChangesTermEnrollment() {
+        Id peId = programEnrollmentReadyForInvoiceId();
+        Term_Enrollment__c te2 = new Term_Enrollment__c(
+            Name = 'Second Term For Trigger',
+            Program_Enrollment__c = peId
+        );
+        insert te2;
+        hed__Course_Enrollment__c ce = [
+            SELECT Id, Term_Enrollment__c
+            FROM hed__Course_Enrollment__c
+            WHERE Term_Enrollment__r.Program_Enrollment__c = :peId
+            LIMIT 1
+        ];
+        ce.Term_Enrollment__c = te2.Id;
+        Test.startTest();
+        update ce;
+        Test.stopTest();
+        System.assertEquals(
+            te2.Id,
+            [SELECT Term_Enrollment__c FROM hed__Course_Enrollment__c WHERE Id = :ce.Id].Term_Enrollment__c
+        );
     }
 
     @isTest
     static void test_Queueable_ReadyPath() {
-        hed__Program_Enrollment__c pe = [
-            SELECT Id
-            FROM hed__Program_Enrollment__c
-            LIMIT 1
-        ];
+        Id peId = programEnrollmentReadyForInvoiceId();
 
         Test.startTest();
-        System.enqueueJob(new ProgramEnrollmentInvoiceQueueable(pe.Id));
+        System.enqueueJob(new ProgramEnrollmentInvoiceQueueable(peId));
         Test.stopTest();
 
         // The queueable should have generated an invoice file
         List<ContentDocumentLink> links = [
             SELECT Id
             FROM ContentDocumentLink
-            WHERE LinkedEntityId = :pe.Id
+            WHERE LinkedEntityId = :peId
         ];
         System.assert(!links.isEmpty(), 'Queueable should generate and attach at least one invoice file.');
     }

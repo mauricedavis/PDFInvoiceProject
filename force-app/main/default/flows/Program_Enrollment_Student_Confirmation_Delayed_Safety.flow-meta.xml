@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionCalls>
+        <name>Send_Student_Confirmation</name>
+        <label>Send Student Confirmation Email</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>ProgramEnrollmentStudentEmail</actionName>
+        <actionType>apex</actionType>
+        <flowTransactionModel>Automatic</flowTransactionModel>
+        <inputParameters>
+            <name>programEnrollmentId</name>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputParameters>
+    </actionCalls>
+    <apiVersion>64.0</apiVersion>
+    <description>Safety net: after delay, enqueues ProgramEnrollmentStudentEmail (queueable waits for PDFs; Apex dedupes duplicate sends within 24h). Entry requires Invoice_created__c=true and Contact populated. doesRequireRecordChangedToMeetCriteria is false so a save while already qualified still schedules (useful for testing and late file attach); extra saves enqueue extra delayed runs but sends dedupe. Verify student Contact has Email. Check Tasks: Student confirmation NOT sent / send FAILED.</description>
+    <environments>Default</environments>
+    <interviewLabel>PE Student Confirmation Delayed {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Program Enrollment - Student Confirmation Delayed Safety</label>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <start>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Invoice_created__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <filters>
+            <field>hed__Contact__c</field>
+            <operator>IsNull</operator>
+            <value>
+                <booleanValue>false</booleanValue>
+            </value>
+        </filters>
+        <object>hed__Program_Enrollment__c</object>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <scheduledPaths>
+            <name>X1_Minute_After</name>
+            <connector>
+                <targetReference>Send_Student_Confirmation</targetReference>
+            </connector>
+            <label>1 Minute After Save</label>
+            <maxBatchSize>200</maxBatchSize>
+            <offsetNumber>1</offsetNumber>
+            <offsetUnit>Minutes</offsetUnit>
+            <timeSource>RecordTriggerEvent</timeSource>
+        </scheduledPaths>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Draft</status>
+</Flow>

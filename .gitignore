@@ -17,6 +17,9 @@ coverage/
 # Accidental CLI artifact (empty file from malformed sf flags)
 --source-dir
 
+# Ad-hoc org retrieves (zip + unpack); use flow-snapshots/ for versioned flow archives
+retrieved_prod_flow/
+
 # Logs
 logs
 *.log

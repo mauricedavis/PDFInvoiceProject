@@ -23,6 +23,87 @@ public without sharing class ProgramEnrollmentInvoiceController {
         }
     }
 
+    private static final String COURSE_ENROLLMENT_SELECT_FIELDS =
+        'Id, Name, Course_Name__c, Term_Name__c, Course_Offering_Start_Date__c, hed__Status__c, Course_Fee__c, ' +
+        'Term_Enrollment__c, Term_Enrollment__r.Program_Enrollment__c';
+
+    /**
+     * Course Connection rows for a Program Enrollment: via custom Term_Enrollment__c → PE and/or
+     * direct lookup to PE (hed__Program_Enrollment__c in EDA / Education Cloud).
+     */
+    public static String courseConnectionWhereClauseForProgramEnrollment() {
+        Map<String, Schema.SObjectField> fm = Schema.SObjectType.hed__Course_Enrollment__c.fields.getMap();
+        List<String> ors = new List<String>{ 'Term_Enrollment__r.Program_Enrollment__c = :peId' };
+        if (fm.containsKey('hed__Program_Enrollment__c')) {
+            ors.add('hed__Program_Enrollment__c = :peId');
+        }
+        // Some orgs use a custom Program_Enrollment__c lookup on Course Connection (not the hed__ field).
+        if (fm.containsKey('Program_Enrollment__c')) {
+            ors.add('Program_Enrollment__c = :peId');
+        }
+        return '(' + String.join(ors, ' OR ') + ')';
+    }
+
+    /**
+     * Same readiness rule as ProgramEnrollmentInvoiceQueueable: wait for Course Connections before first PDF
+     * so Flow/Invocable does not stamp an empty invoice that blocks later regeneration.
+     */
+    public static Boolean isReadyForInvoiceGeneration(Id peId) {
+        if (peId == null) {
+            return false;
+        }
+        Integer termEnrollmentCount = [
+            SELECT COUNT()
+            FROM Term_Enrollment__c
+            WHERE Program_Enrollment__c = :peId
+        ];
+        Integer actualCount = countCourseConnectionsForProgramEnrollment(peId);
+        return termEnrollmentCount > 0 ? actualCount >= termEnrollmentCount : actualCount > 0;
+    }
+
+    /**
+     * True when at least one Course Connection exists for the PE and any of them changed after the latest
+     * Invoice_* file was published — used to replace an early empty/stale PDF.
+     */
+    public static Boolean isProgramEnrollmentInvoiceStale(Id peId) {
+        if (peId == null) {
+            return false;
+        }
+        if (countCourseConnectionsForProgramEnrollment(peId) == 0) {
+            return false;
+        }
+        String aggSoql =
+            'SELECT MAX(LastModifiedDate) maxLm FROM hed__Course_Enrollment__c WHERE ' +
+            courseConnectionWhereClauseForProgramEnrollment();
+        AggregateResult[] ar = (AggregateResult[]) Database.query(aggSoql);
+        Datetime maxLm = ar.isEmpty() ? null : (Datetime) ar[0].get('maxLm');
+        if (maxLm == null) {
+            return false;
+        }
+        List<ContentVersion> invRows = [
+            SELECT CreatedDate
+            FROM ContentVersion
+            WHERE FirstPublishLocationId = :peId
+              AND IsLatest = TRUE
+              AND Title LIKE 'Invoice_%'
+            ORDER BY CreatedDate DESC
+            LIMIT 1
+        ];
+        if (invRows.isEmpty()) {
+            return false;
+        }
+        return maxLm > invRows[0].CreatedDate;
+    }
+
+    public static Integer countCourseConnectionsForProgramEnrollment(Id peId) {
+        if (peId == null) {
+            return 0;
+        }
+        String soql =
+            'SELECT COUNT() FROM hed__Course_Enrollment__c WHERE ' + courseConnectionWhereClauseForProgramEnrollment();
+        return (Integer) Database.countQuery(soql);
+    }
+
     private void loadInvoiceData(Id peId) {
 
         // ---------------- Program Enrollment ----------------
@@ -40,21 +121,14 @@ public without sharing class ProgramEnrollmentInvoiceController {
             LIMIT 1
         ];
 
-        // ---------------- Course Enrollments ----------------
-        courseEnrollments = [
-            SELECT Id,
-                   Name,
-                   Course_Name__c,
-                   Term_Name__c,
-                   Course_Offering_Start_Date__c,
-                   hed__Status__c,
-                   Course_Fee__c,
-                   Term_Enrollment__c,
-                   Term_Enrollment__r.Program_Enrollment__c
-            FROM hed__Course_Enrollment__c
-            WHERE Term_Enrollment__r.Program_Enrollment__c = :peId
-            ORDER BY Course_Offering_Start_Date__c
-        ];
+        // ---------------- Course Connections (Term path and/or direct PE lookup) ----------------
+        String soql =
+            'SELECT ' +
+            COURSE_ENROLLMENT_SELECT_FIELDS +
+            ' FROM hed__Course_Enrollment__c WHERE ' +
+            courseConnectionWhereClauseForProgramEnrollment() +
+            ' ORDER BY Course_Offering_Start_Date__c NULLS LAST';
+        courseEnrollments = (List<hed__Course_Enrollment__c>) Database.query(soql);
 
         // ---------------- Total Calculation ----------------
         totalAmount = 0;
@@ -102,8 +176,24 @@ public without sharing class ProgramEnrollmentInvoiceController {
     }
 
     public static void generateAttachAndEmail(Id programEnrollmentId, List<String> extraOptions) {
+        generateAttachAndEmailInternal(programEnrollmentId, extraOptions, true);
+    }
 
-        if (programEnrollmentId == null) return;
+    /**
+     * Batch execute path: queueable already enforced readiness; avoid re-check that would re-enqueue forever.
+     */
+    public static void generateAttachAndEmailForBatch(Id programEnrollmentId) {
+        generateAttachAndEmailInternal(programEnrollmentId, null, false);
+    }
+
+    private static void generateAttachAndEmailInternal(
+        Id programEnrollmentId,
+        List<String> extraOptions,
+        Boolean requireReadinessBeforeInsert
+    ) {
+        if (programEnrollmentId == null) {
+            return;
+        }
 
         try {
             // Lock the Program Enrollment so concurrent async jobs can't generate duplicate invoices.
@@ -131,6 +221,16 @@ public without sharing class ProgramEnrollmentInvoiceController {
             ];
             if (existingInvoiceCount > 0) {
                 System.debug('ProgramEnrollmentInvoiceController: Invoice already exists for PE ' + enrollment.Id + '; skipping.');
+                return;
+            }
+
+            if (requireReadinessBeforeInsert && !Test.isRunningTest() && !isReadyForInvoiceGeneration(enrollment.Id)) {
+                System.debug(
+                    'ProgramEnrollmentInvoiceController: PE ' +
+                        enrollment.Id +
+                        ' not ready for invoice (course rows); enqueuing ProgramEnrollmentInvoiceQueueable.'
+                );
+                System.enqueueJob(new ProgramEnrollmentInvoiceQueueable(enrollment.Id));
                 return;
             }
 
@@ -193,7 +293,7 @@ public without sharing class ProgramEnrollmentInvoiceController {
         }
     }
 
-    private static void deleteGeneratedInvoiceContentDocuments(Id programEnrollmentId) {
+    public static void deleteGeneratedInvoiceContentDocuments(Id programEnrollmentId) {
         List<ContentDocumentLink> links = [
             SELECT ContentDocumentId, ContentDocument.Title
             FROM ContentDocumentLink

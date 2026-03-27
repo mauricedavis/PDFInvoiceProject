@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
-    <apiVersion>64.0</apiVersion>
     <actionCalls>
         <name>Copy_FA_Responses_To_PE</name>
         <label>Copy FA Responses To PE</label>
@@ -18,12 +17,61 @@
                 <elementReference>$Record.Id</elementReference>
             </value>
         </inputParameters>
+        <nameSegment>ProgramEnrollmentCopyResponsesInvocable</nameSegment>
+        <offset>0</offset>
     </actionCalls>
+    <actionCalls>
+        <name>Send_email_notification_to_student_and_attached_PDF_s</name>
+        <label>Send email notification to student and attached PDF&apos;s</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <actionName>PEInvoiceActionOne</actionName>
+        <actionType>apex</actionType>
+        <flowTransactionModel>Automatic</flowTransactionModel>
+        <inputParameters>
+            <name>ProgramEnrollmentId</name>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputParameters>
+        <nameSegment>PEInvoiceActionOne</nameSegment>
+        <offset>0</offset>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </actionCalls>
+    <apiVersion>64.0</apiVersion>
+    <decisions>
+        <name>Found_PE_File_Link</name>
+        <label>Found registration file link on PE?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Set_Invoice_Created_No_CDL_On_PE</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No link on PE</defaultConnectorLabel>
+        <rules>
+            <name>Yes_has_ContentDocument</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_ContentDocumentLink.ContentDocumentId</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_ContentVersion</targetReference>
+            </connector>
+            <label>Yes, has ContentDocument on PE</label>
+        </rules>
+    </decisions>
     <decisions>
         <name>Needs_Invoice_Attached</name>
         <label>Needs Invoice Attached?</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Send_email_notification_to_student_and_attached_PDF_s</targetReference>
+        </defaultConnector>
         <defaultConnectorLabel>No, skip</defaultConnectorLabel>
         <rules>
             <name>Yes_needs_invoice_attached</name>
@@ -41,17 +89,15 @@
             <label>Yes, needs invoice attached</label>
         </rules>
     </decisions>
-    <description>03.25.2026 - v50 - Async path: Apex Copy FA responses PDF to PE before invoice branch (ProgramEnrollmentCopyResponsesInvocable).
+    <description>03.27.2026 - v20 - Invoice branch: lookup ContentDocumentLink by $Record.Id (after Copy FA); allow no rows + branch to PEInvoiceActionOne so flow does not fault when sfProgramEnrollmentId__c is blank or files are only on PE. v19 NPE fix is in Apex (programOfficeOweaLookupDone = false).
+03.24.2026 - v19 - Student confirmation: removed Flow emailSimple (same-txn send deduped Apex and often attached only one PDF). PEInvoiceActionOne uses $Record.Id; PEInvoiceActionOne + queueable send both PDFs via ProgramEnrollmentStudentEmail. Deploying this file creates a new Salesforce flow version; prior versions (e.g. v18) remain in Setup → Flows → Version History. Frozen v18 XML for diff/rollback reference: flow-snapshots/Program_Enrollment_Notification_to_Enrollee_v18.flow-meta.xml.
+03.26.2026 - v18 (PROD) - Added filter to only trigger when the program is for &apos;Implementation Science&apos;
+03.25.2026 - v50 - Async path: Apex Copy FA responses PDF to PE before invoice branch (ProgramEnrollmentCopyResponsesInvocable).
 11.11.2025 (MJD) - v49 - Removed duplicate Apex Action - allowing Apex code to handle creation of Invoice.
 10.28.2025 (MJD) - v47 - Updated Action to call &quot;Generate and Attach Program&quot; so that we send PDF&apos;s of Responses from FA &amp; Invoice.
 09.23.2025 (MJD) - v46 - Added logic for FormAssembly URL as filter criteria in firing the flow.
 09.23.2025 (MJD) - v45 - Removed &apos;Email&apos; node to test if it is redundant.</description>
     <environments>Default</environments>
-    <formulas>
-        <name>varEmailSubject</name>
-        <dataType>String</dataType>
-        <expression>&quot;Course Enrollment Invoice - &quot; + {!$Record.Name} + &quot; for &quot; + ($Record.hed__Contact__r.FirstName + &quot; &quot; + $Record.hed__Contact__r.LastName)</expression>
-    </formulas>
     <interviewLabel>Program Enrollment - Notification to Enrollee {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Program Enrollment - Notification to Enrollee</label>
     <processMetadataValues>
@@ -78,16 +124,16 @@
         <label>Get ContentDocumentLink</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
-        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
         <connector>
-            <targetReference>Get_ContentVersion</targetReference>
+            <targetReference>Found_PE_File_Link</targetReference>
         </connector>
         <filterLogic>and</filterLogic>
         <filters>
             <field>LinkedEntityId</field>
             <operator>EqualTo</operator>
             <value>
-                <elementReference>$Record.sfProgramEnrollmentId__c</elementReference>
+                <elementReference>$Record.Id</elementReference>
             </value>
         </filters>
         <getFirstRecordOnly>true</getFirstRecordOnly>
@@ -125,10 +171,29 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordUpdates>
+        <name>Set_Invoice_Created_No_CDL_On_PE</name>
+        <label>Set Invoice Created (no CDL on PE)</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Send_email_notification_to_student_and_attached_PDF_s</targetReference>
+        </connector>
+        <inputAssignments>
+            <field>Invoice_created__c</field>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputAssignments>
+        <inputReference>$Record</inputReference>
+    </recordUpdates>
+    <recordUpdates>
         <name>Update_Program_Enrollment_audit_field</name>
         <label>Update Program Enrollment &apos;audit&apos; field</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
+        <connector>
+            <targetReference>Send_email_notification_to_student_and_attached_PDF_s</targetReference>
+        </connector>
         <inputAssignments>
             <field>Last_Invoice_ContentVersion_Id__c</field>
             <value>
@@ -163,21 +228,7 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
-        <filterLogic>1 AND (2 OR 3) AND 4</filterLogic>
-        <filters>
-            <field>hed__Enrollment_Status__c</field>
-            <operator>EqualTo</operator>
-            <value>
-                <stringValue>Payment Pending</stringValue>
-            </value>
-        </filters>
-        <filters>
-            <field>Invoice_created__c</field>
-            <operator>EqualTo</operator>
-            <value>
-                <booleanValue>false</booleanValue>
-            </value>
-        </filters>
+        <filterLogic>and</filterLogic>
         <filters>
             <field>Invoice_emailed__c</field>
             <operator>EqualTo</operator>
@@ -186,10 +237,10 @@
             </value>
         </filters>
         <filters>
-            <field>FormAssembly_URL__c</field>
-            <operator>IsNull</operator>
+            <field>hed__Account__c</field>
+            <operator>NotEqualTo</operator>
             <value>
-                <booleanValue>false</booleanValue>
+                <stringValue>001Dn00000dxeGCIAY</stringValue>
             </value>
         </filters>
         <object>hed__Program_Enrollment__c</object>
@@ -203,41 +254,4 @@
         <triggerType>RecordAfterSave</triggerType>
     </start>
     <status>Active</status>
-    <textTemplates>
-        <name>varBody</name>
-        <isViewedAsPlainText>false</isViewedAsPlainText>
-        <text>&lt;p&gt;Hello {!$Record.hed__Contact__r.FirstName},&lt;/p&gt;&lt;p&gt;&lt;br&gt;&lt;/p&gt;&lt;p&gt;Thank you for enrolling in {!$Record.hed__Account__r.Name}.&lt;/p&gt;&lt;p&gt;Below is a summary of the courses on your invoice:&lt;/p&gt;&lt;p&gt;&lt;br&gt;&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Course Term | Course Fee  | &lt;/strong&gt;&lt;strong style=&quot;background-color: rgb(255, 255, 255);&quot;&gt;Course Title&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;{!varRows}&lt;/p&gt;&lt;p&gt;=========================================================&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Total Fees:  ${!varTotalFee}&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;&lt;br&gt;&lt;/p&gt;&lt;p&gt;&amp;nbsp;If you have any questions, just reply to this message.&lt;/p&gt;&lt;p&gt;&amp;nbsp;Regards,&lt;/p&gt;&lt;p&gt;&amp;nbsp;The Registrar&lt;/p&gt;</text>
-    </textTemplates>
-    <variables>
-        <name>varContactEmailList</name>
-        <dataType>String</dataType>
-        <isCollection>false</isCollection>
-        <isInput>true</isInput>
-        <isOutput>true</isOutput>
-        <value>
-            <stringValue>mjdavis@attainpartners.com</stringValue>
-        </value>
-    </variables>
-    <variables>
-        <name>varEmailMessageId</name>
-        <dataType>String</dataType>
-        <isCollection>false</isCollection>
-        <isInput>true</isInput>
-        <isOutput>true</isOutput>
-    </variables>
-    <variables>
-        <name>varRows</name>
-        <dataType>String</dataType>
-        <isCollection>false</isCollection>
-        <isInput>true</isInput>
-        <isOutput>true</isOutput>
-    </variables>
-    <variables>
-        <name>varTotalFee</name>
-        <dataType>Number</dataType>
-        <isCollection>false</isCollection>
-        <isInput>true</isInput>
-        <isOutput>true</isOutput>
-        <scale>0</scale>
-    </variables>
 </Flow>

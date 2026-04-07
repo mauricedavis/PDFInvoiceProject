@@ -20,6 +20,10 @@ coverage/
 # Ad-hoc org retrieves (zip + unpack); use flow-snapshots/ for versioned flow archives
 retrieved_prod_flow/
 
+# CLI retrieve working dirs (commit named copies: flow-snapshots/*_PRE_DEPLOY_*.flow-meta.xml)
+flow-snapshots/ucsf-prod-rollback/
+flow-snapshots/ucsf-fullsb-rollback/
+
 # Logs
 logs
 *.log

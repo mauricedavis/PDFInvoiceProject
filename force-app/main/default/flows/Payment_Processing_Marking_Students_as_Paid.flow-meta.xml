@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <actionCalls>
+        <name>Send_Payment_Received_Email_to_Student</name>
+        <label>Send payment received email to student</label>
+        <locationX>176</locationX>
+        <locationY>1379</locationY>
+        <actionName>emailSimple</actionName>
+        <actionType>emailSimple</actionType>
+        <flowTransactionModel>CurrentTransaction</flowTransactionModel>
+        <inputParameters>
+            <name>senderType</name>
+            <value>
+                <stringValue>OrgWideEmailAddress</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>senderAddress</name>
+            <value>
+                <stringValue>implementationscience@ucsf.edu</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>useEmailTemplate</name>
+            <value>
+                <stringValue>False</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailSubject</name>
+            <value>
+                <elementReference>formula_Payment_Confirmation_Subject</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>richTextEmailBody</name>
+            <value>
+                <elementReference>textTmpl_Payment_Confirmation_Html</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>recipientId</name>
+            <value>
+                <elementReference>Get_Student_Program_Enrollment.hed__Contact__c</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>relatedRecordId</name>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>logEmailOnSend</name>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </inputParameters>
+        <nameSegment>emailSimple</nameSegment>
+        <offset>0</offset>
+        <versionString>2.0.1</versionString>
+    </actionCalls>
+    <apiVersion>63.0</apiVersion>
+    <assignments>
+        <description>Add to collection variable.</description>
+        <name>Add_Single_Variables_to_Collection</name>
+        <label>Add Single Variables to Collection</label>
+        <locationX>264</locationX>
+        <locationY>863</locationY>
+        <assignmentItems>
+            <assignToReference>varCollectionCourseEnrollments</assignToReference>
+            <operator>Add</operator>
+            <value>
+                <elementReference>varSingleCourseEnrollment</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Loop_through_Course_Enrollments</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>Add single variable assignments.</description>
+        <name>Add_Values_to_Single_Variable</name>
+        <label>Add Values to Single Variable</label>
+        <locationX>264</locationX>
+        <locationY>755</locationY>
+        <assignmentItems>
+            <assignToReference>varSingleCourseEnrollment.hed__Status__c</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <stringValue>Current</stringValue>
+            </value>
+        </assignmentItems>
+        <assignmentItems>
+            <assignToReference>varSingleCourseEnrollment.Id</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Loop_through_Course_Enrollments.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Add_Single_Variables_to_Collection</targetReference>
+        </connector>
+    </assignments>
+    <decisions>
+        <name>Send_Payment_Confirmation_To_Student</name>
+        <label>Send payment confirmation to student?</label>
+        <locationX>176</locationX>
+        <locationY>1271</locationY>
+        <defaultConnectorLabel>No</defaultConnectorLabel>
+        <rules>
+            <name>Yes_Send_Confirmation</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Student_Program_Enrollment.Id</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>Get_Student_Program_Enrollment.hed__Contact__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>formula_Has_Student_Email</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>formula_Is_Implementation_Science_Program</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Send_Payment_Received_Email_to_Student</targetReference>
+            </connector>
+            <label>Yes, send confirmation</label>
+        </rules>
+    </decisions>
+    <description>To assist financial team to mark students&apos; records when payment received, as well as mark the Program Enrollment, Term Enrollment, &amp; Course Enrollment(s) records appropriately.
+
+04.08.2026 — Payment email body uses Text Template (rich/HTML) so clients render paragraphs, links, and logo; not a plain-text formula string.
+04.07.2026 — After updates, when the related Program Enrollment is Implementation Science (Account name contains &quot;Implementation Science&quot;) and the student Contact has an email, sends a payment-received confirmation from implementationscience@ucsf.edu. Entry remains Opportunity Stage = &quot;Full Payment Received&quot; with record-changed-to-meet-criteria (transition only).</description>
+    <environments>Default</environments>
+    <formulas>
+        <name>formula_Has_Student_Email</name>
+        <dataType>Boolean</dataType>
+        <expression>NOT(ISBLANK({!Get_Student_Program_Enrollment.hed__Contact__r.Email}))</expression>
+    </formulas>
+    <formulas>
+        <name>formula_Is_Implementation_Science_Program</name>
+        <dataType>Boolean</dataType>
+        <expression>CONTAINS(UPPER(BLANKVALUE({!Get_Student_Program_Enrollment.hed__Account__r.Name}, &quot;&quot;)), &quot;IMPLEMENTATION SCIENCE&quot;)</expression>
+    </formulas>
+    <formulas>
+        <name>formula_Payment_Email_FirstName</name>
+        <dataType>String</dataType>
+        <expression>BLANKVALUE({!Get_Student_Program_Enrollment.hed__Contact__r.FirstName}, &quot;there&quot;)</expression>
+    </formulas>
+    <formulas>
+        <name>formula_Payment_Email_ProgramName</name>
+        <dataType>String</dataType>
+        <expression>BLANKVALUE({!Get_Student_Program_Enrollment.hed__Account__r.Name}, &quot;your program&quot;)</expression>
+    </formulas>
+    <formulas>
+        <name>formula_Payment_Confirmation_Subject</name>
+        <dataType>String</dataType>
+        <expression>&quot;Thank you — we received your payment&quot;</expression>
+    </formulas>
+    <interviewLabel>Payment Processing: Marking Students as Paid {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Payment Processing: Marking Students as Paid</label>
+    <loops>
+        <description>Find &amp; loop through all Course Enrollments.</description>
+        <name>Loop_through_Course_Enrollments</name>
+        <label>Loop through Course Enrollments</label>
+        <locationX>176</locationX>
+        <locationY>647</locationY>
+        <collectionReference>Get_All_Associated_Course_Enrollments</collectionReference>
+        <iterationOrder>Asc</iterationOrder>
+        <nextValueConnector>
+            <targetReference>Add_Values_to_Single_Variable</targetReference>
+        </nextValueConnector>
+        <noMoreValuesConnector>
+            <targetReference>Update_All_Associated_Course_Enrollments</targetReference>
+        </noMoreValuesConnector>
+    </loops>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>AutoLaunchedFlow</processType>
+    <recordLookups>
+        <name>Get_All_Associated_Course_Enrollments</name>
+        <label>Get All Associated Course Enrollments</label>
+        <locationX>176</locationX>
+        <locationY>539</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Loop_through_Course_Enrollments</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Term_Enrollment__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Term_Enrollment__c</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>false</getFirstRecordOnly>
+        <object>hed__Course_Enrollment__c</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Student_Program_Enrollment</name>
+        <label>Get Student Program Enrollment</label>
+        <locationX>176</locationX>
+        <locationY>1163</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Send_Payment_Confirmation_To_Student</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Term_Enrollment__r.Program_Enrollment__c</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>hed__Program_Enrollment__c</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordUpdates>
+        <description>Update the &apos;Status&apos; for all Course Enrollments associated with the original Term Payment Opportunity.</description>
+        <name>Update_All_Associated_Course_Enrollments</name>
+        <label>Update All Associated Course Enrollments</label>
+        <locationX>176</locationX>
+        <locationY>1055</locationY>
+        <connector>
+            <targetReference>Get_Student_Program_Enrollment</targetReference>
+        </connector>
+        <inputReference>varCollectionCourseEnrollments</inputReference>
+    </recordUpdates>
+    <recordUpdates>
+        <name>Update_the_Associated_Program_Enrollment</name>
+        <label>Update the Associated Program Enrollment</label>
+        <locationX>176</locationX>
+        <locationY>431</locationY>
+        <connector>
+            <targetReference>Get_All_Associated_Course_Enrollments</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Term_Enrollment__r.Program_Enrollment__c</elementReference>
+            </value>
+        </filters>
+        <inputAssignments>
+            <field>hed__Enrollment_Status__c</field>
+            <value>
+                <stringValue>Currently Enrolled</stringValue>
+            </value>
+        </inputAssignments>
+        <object>hed__Program_Enrollment__c</object>
+    </recordUpdates>
+    <recordUpdates>
+        <description>Update the appropriately linked Term Enrollment record as &apos;Enrolled&apos;</description>
+        <name>Update_the_Term_Enrollment</name>
+        <label>Update the Term Enrollment</label>
+        <locationX>176</locationX>
+        <locationY>323</locationY>
+        <connector>
+            <targetReference>Update_the_Associated_Program_Enrollment</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Term_Enrollment__c</elementReference>
+            </value>
+        </filters>
+        <inputAssignments>
+            <field>Status__c</field>
+            <value>
+                <stringValue>Enrolled</stringValue>
+            </value>
+        </inputAssignments>
+        <object>Term_Enrollment__c</object>
+    </recordUpdates>
+    <start>
+        <locationX>50</locationX>
+        <locationY>0</locationY>
+        <connector>
+            <targetReference>Update_the_Term_Enrollment</targetReference>
+        </connector>
+        <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>StageName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Full Payment Received</stringValue>
+            </value>
+        </filters>
+        <object>Opportunity</object>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <triggerType>RecordAfterSave</triggerType>
+    </start>
+    <status>Active</status>
+    <textTemplates>
+        <name>textTmpl_Payment_Confirmation_Html</name>
+        <isViewedAsPlainText>false</isViewedAsPlainText>
+        <text>&lt;div style=&quot;font-family: Segoe UI, Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.5; max-width: 560px;&quot;&gt;
+&lt;p style=&quot;margin: 0 0 16px 0;&quot;&gt;&lt;img src=&quot;https://www.ucsf.edu/sites/default/files/2019-05/ucsflogo_rgb.png&quot; width=&quot;160&quot; alt=&quot;UCSF&quot; style=&quot;border: 0; display: block;&quot; /&gt;&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;Hello {!formula_Payment_Email_FirstName},&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;Thank you, we received your payment. You are enrolled in &lt;strong&gt;{!formula_Payment_Email_ProgramName}&lt;/strong&gt;.&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;Course dates and enrollment policies can be found through the &lt;a href=&quot;https://implementationscience.ucsf.edu/&quot;&gt;UCSF Implementation Science Training Program&amp;#39;s main page&lt;/a&gt;.&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;If you wish to change this enrollment, please reach out to us as soon as possible at &lt;a href=&quot;mailto:ImplementationScience@ucsf.edu&quot;&gt;ImplementationScience@ucsf.edu&lt;/a&gt;.&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;Thank you. We look forward to working with you.&lt;/p&gt;
+&lt;p style=&quot;margin: 16px 0 0 0; color: #555555;&quot;&gt;&amp;mdash; The UCSF Implementation Science Team&lt;/p&gt;
+&lt;/div&gt;</text>
+    </textTemplates>
+    <variables>
+        <description>Collection variable of Course Enrollment records.</description>
+        <name>varCollectionCourseEnrollments</name>
+        <dataType>SObject</dataType>
+        <isCollection>true</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+        <objectType>hed__Course_Enrollment__c</objectType>
+    </variables>
+    <variables>
+        <name>varSingleCourseEnrollment</name>
+        <dataType>SObject</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+        <objectType>hed__Course_Enrollment__c</objectType>
+    </variables>
+</Flow>

@@ -52,7 +52,7 @@ Salesforce does not offer one-click “revert deployment” for Apex. Options:
   `ProgramEnrollmentInvoiceController`, `ProgramEnrollmentInvoiceQueueable`, `ProgramEnrollmentInvoiceBatch`, and tests `ProgramEnrollmentInvoiceController_Tests`. Revert those together so readiness + stale-invoice logic stays consistent.
 - **Student confirmation email**: `ProgramEnrollmentStudentEmail`, `ProgramEnrollmentStudentEmailQueueable`, `PEInvoiceActionOne`, etc.
 - **Payment received (Implementation Science) HTML email**: `PaymentReceivedEmailInvocable`, `PaymentReceivedEmailInvocable_Tests` — revert/deploy together with the Payment flow if you undo the Apex-based send.
-- **Payment email logo**: Static Resource **`UCSF_ImplSci_EmailLogo`** — remove or replace in org if you revert the inline-logo change (Apex references it by name).
+- **Payment email logo**: Static Resource **`ImplemenationScienceLogo`** (org-domain `/resource/...` URL in HTML; no CID). Legacy **`UCSF_ImplSci_EmailLogo`** may still exist in the org if not deleted manually.
 - Or deploy from a **branch/tag** that matches pre-change prod.
 
 ## 6. Full project rollback
@@ -69,6 +69,8 @@ See **`FLOW_DEPLOY_SCOPE.md`** for v18 vs v19 behaviour and deploy scope.
 
 | When (UTC)        | Org        | Deploy Id          | Components | Tests |
 |-------------------|------------|--------------------|------------|-------|
+| 2026-04-08        | ucsf-fullsb | `0Afbb00000BfimjCAB` | Apex `PaymentReceivedEmailInvocable`, StaticResource `ImplemenationScienceLogo` (+ tests unchanged) | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 3/3 pass |
+| 2026-04-08        | ucsf-prod  | `0AfPj0000023uVxKAI` | Same subset as fullsb row (metadata deploy; org-domain logo URL, no inline attachment) | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 3/3 pass |
 | 2026-04-08        | ucsf-prod  | `0AfPj0000023uAzKAI` | StaticResource `UCSF_ImplSci_EmailLogo`, Apex `PaymentReceivedEmailInvocable` (+ tests), Flow `Payment_Processing_Marking_Students_as_Paid` (inline logo + `nameSegment` fix) | RunSpecifiedTests: 67 pass (+ EnrollmentEmailTemplateConfig_Tests) |
 | 2026-04-08        | ucsf-prod  | `0AfPj0000023u2vKAA` | Apex `PaymentReceivedEmailInvocable` (+ tests), Flow `Payment_Processing_Marking_Students_as_Paid` (Apex action for HTML payment email) | RunSpecifiedTests: 66 pass (StudentEmail, InvoiceController, Notify, PaymentReceivedEmail) |
 | 2026-04-07        | ucsf-prod  | `0AfPj0000023pmPKAQ` | Flow `Payment_Processing_Marking_Students_as_Paid` (`emailSimple` → **`richTextEmailBody`** for HTML email) | RunSpecifiedTests: 63 pass |

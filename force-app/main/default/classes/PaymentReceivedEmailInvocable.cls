@@ -1,23 +1,23 @@
 /**
  * Sends the Implementation Science "payment received" confirmation as real HTML email.
  * Flow's emailSimple action does not support richTextEmailBody in all orgs/API mixes; Apex setHtmlBody is reliable.
+ *
+ * Logo: img src uses the org-domain /resource/... URL for public-cache static resource ImplemenationScienceLogo so
+ * clients like Gmail render inline without CID attachments. Override with Custom Label
+ * For a logo hosted outside Salesforce (e.g. program site CDN), add Custom Metadata or a similar config later;
+ * vf.force.com Visualforce host URLs often require login and are not suitable as the img src for external recipients.
  */
 public without sharing class PaymentReceivedEmailInvocable {
 
     private static final String PROGRAM_OFFICE_FROM_EMAIL = 'implementationscience@ucsf.edu';
     private static final String SUBJECT = 'Thank you \u2014 we received your payment';
-    /** Public UCSF theme asset (SVG). Fallback when Static Resource is missing; many clients prefer inline PNG (CID). */
+    /** Fallback when label is blank and static resource URL cannot be resolved (tests, misnamed SR, etc.). */
     private static final String LOGO_FALLBACK_URL = 'https://www.ucsf.edu/themes/custom/ucsf/logo.svg';
-
-    private static final String LOGO_STATIC_RESOURCE_NAME = 'UCSF_ImplSci_EmailLogo';
-    /** Must match EmailFileAttachment fileName for inline images (EmailFileAttachment has no setContentId in Apex). */
-    private static final String LOGO_INLINE_FILENAME = 'ucsf-implsci-logo.png';
+    /** Org static resource name (matches existing UCSF asset spelling). */
+    private static final String LOGO_STATIC_RESOURCE_NAME = 'ImplemenationScienceLogo';
 
     private static Id cachedProgramOfficeOweaId;
     private static Boolean programOfficeOweaLookupDone = false;
-
-    private static Blob cachedLogoBody;
-    private static Boolean logoBodyLookupDone = false;
 
     /** Set during sendPaymentConfirmation; used in tests instead of calling Messaging.sendEmail (OWEA/domain rules). */
     @TestVisible
@@ -67,8 +67,7 @@ public without sharing class PaymentReceivedEmailInvocable {
 
         List<Messaging.SingleEmailMessage> toSend = new List<Messaging.SingleEmailMessage>();
         Id oweaId = getProgramOfficeOrgWideEmailAddressId();
-        Blob logoBody = getLogoBodyFromStaticResource();
-        String logoImgSrc = logoBody != null ? 'cid:' + LOGO_INLINE_FILENAME : LOGO_FALLBACK_URL;
+        String logoImgSrc = resolveLogoImgSrc();
 
         for (Request r : requests) {
             if (r == null || r.opportunityId == null || r.programEnrollmentId == null) {
@@ -97,13 +96,6 @@ public without sharing class PaymentReceivedEmailInvocable {
             msg.setSaveAsActivity(true);
             msg.setSubject(SUBJECT);
             msg.setHtmlBody(buildHtmlBody(htmlEsc(firstName), htmlEsc(programName), logoImgSrc));
-            if (logoBody != null) {
-                Messaging.EmailFileAttachment logoAtt = new Messaging.EmailFileAttachment();
-                logoAtt.setFileName(LOGO_INLINE_FILENAME);
-                logoAtt.setBody(logoBody);
-                logoAtt.setInline(true);
-                msg.setFileAttachments(new List<Messaging.EmailFileAttachment>{ logoAtt });
-            }
             if (oweaId != null) {
                 msg.setOrgWideEmailAddressId(oweaId);
             }
@@ -150,19 +142,32 @@ public without sharing class PaymentReceivedEmailInvocable {
         return cachedProgramOfficeOweaId;
     }
 
-    private static Blob getLogoBodyFromStaticResource() {
-        if (logoBodyLookupDone) {
-            return cachedLogoBody;
+    /** Absolute URL to public-cache static resource on the org domain (no CID attachments). */
+    private static String resolveLogoImgSrc() {
+        String fromResource = absoluteUrlForStaticResource(LOGO_STATIC_RESOURCE_NAME);
+        if (String.isNotBlank(fromResource)) {
+            return htmlEscAttr(fromResource);
         }
-        logoBodyLookupDone = true;
-        List<StaticResource> rows = [
-            SELECT Body
-            FROM StaticResource
-            WHERE Name = :LOGO_STATIC_RESOURCE_NAME
-            LIMIT 1
-        ];
-        cachedLogoBody = rows.isEmpty() ? null : rows[0].Body;
-        return cachedLogoBody;
+        return LOGO_FALLBACK_URL;
+    }
+
+    private static String absoluteUrlForStaticResource(String resourceName) {
+        if (String.isBlank(resourceName)) {
+            return null;
+        }
+        try {
+            PageReference pr = PageReference.forResource(resourceName);
+            if (pr == null) {
+                return null;
+            }
+            String path = pr.getUrl();
+            if (String.isBlank(path)) {
+                return null;
+            }
+            return URL.getOrgDomainUrl().toExternalForm() + path;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String htmlEsc(String s) {
@@ -175,6 +180,15 @@ public without sharing class PaymentReceivedEmailInvocable {
             .replace('"', '&quot;');
     }
 
+    private static String htmlEscAttr(String s) {
+        if (s == null) {
+            return '';
+        }
+        return s.replace('&', '&amp;')
+            .replace('"', '&quot;')
+            .replace('\'', '&#39;');
+    }
+
     private static String buildHtmlBody(
         String firstNameEscaped,
         String programNameEscaped,
@@ -183,7 +197,7 @@ public without sharing class PaymentReceivedEmailInvocable {
         return '<div style="font-family: Segoe UI, Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.5; max-width: 560px;">'
             + '<p style="margin: 0 0 16px 0;"><img src="'
             + logoImgSrc
-            + '" width="160" alt="UCSF" style="border: 0; display: block;" /></p>'
+            + '" width="280" alt="UCSF Implementation Science" style="border: 0; display: block; max-width: 100%; height: auto;" /></p>'
             + '<p style="margin: 0 0 12px 0;">Hello '
             + firstNameEscaped
             + ',</p>'

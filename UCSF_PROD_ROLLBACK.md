@@ -12,7 +12,8 @@ Before redeploying an older flow from Git, confirm you have a **pre-change** cop
 
 | Flow (API name) | Pre-deploy snapshot in this repo | Notes |
 |-----------------|----------------------------------|--------|
-| `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-07.flow-meta.xml` | **Use first to undo the HTML-body fix:** state immediately before **`richTextEmailBody`** deploy (still had plain `emailBody`, which showed raw HTML in Gmail). |
+| `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-08.flow-meta.xml` | **Latest payment-email rollback:** prod immediately before **Apex HTML send** (`PaymentReceivedEmailInvocable`); prior flow still used `emailSimple` / invalid `richTextEmailBody` in Builder. Also roll back/remove Apex per §5. |
+| `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-07.flow-meta.xml` | Before **`richTextEmailBody`** attempt (plain `emailBody`, raw HTML in Gmail). |
 | `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-09.flow-meta.xml` | Earlier prod capture (payment + enrollee batch deploy). |
 | `Program_Enrollment_Notification_to_Enrollee` | `flow-snapshots/Program_Enrollment_Notification_to_Enrollee_PRE_DEPLOY_ucsf_prod_2026-04-09.flow-meta.xml` | Before enrollee / payment-related flow updates in that batch. |
 
@@ -39,7 +40,7 @@ Older Git mirror (v18, for diff or historical reference):
 ## 4. Roll back **Payment Processing — Marking Students as Paid** (UI)
 
 1. **Setup → Flows** → open **Payment Processing - Marking Students as Paid** (API: `Payment_Processing_Marking_Students_as_Paid`).
-2. **Version History** → deactivate the current active version → activate the previous version, **or** redeploy from the **2026-04-07** payment snapshot (undo `richTextEmailBody`) or the **2026-04-09** snapshot as in §2.
+2. **Version History** → deactivate the current active version → activate the previous version, **or** redeploy from the **2026-04-08** snapshot (undo Apex email action) or older snapshots in §2. If reverting the flow only, remove or redeploy **Apex** `PaymentReceivedEmailInvocable` / tests from a prior Git commit so the org stays consistent.
 
 ## 5. Roll back **Apex** (student email, invoice PDF, queueable/batch)
 
@@ -49,6 +50,7 @@ Salesforce does not offer one-click “revert deployment” for Apex. Options:
 - **Invoice / course lines on PDF** (Mar 27 2026 change): affected classes are  
   `ProgramEnrollmentInvoiceController`, `ProgramEnrollmentInvoiceQueueable`, `ProgramEnrollmentInvoiceBatch`, and tests `ProgramEnrollmentInvoiceController_Tests`. Revert those together so readiness + stale-invoice logic stays consistent.
 - **Student confirmation email**: `ProgramEnrollmentStudentEmail`, `ProgramEnrollmentStudentEmailQueueable`, `PEInvoiceActionOne`, etc.
+- **Payment received (Implementation Science) HTML email**: `PaymentReceivedEmailInvocable`, `PaymentReceivedEmailInvocable_Tests` — revert/deploy together with the Payment flow if you undo the Apex-based send.
 - Or deploy from a **branch/tag** that matches pre-change prod.
 
 ## 6. Full project rollback
@@ -65,6 +67,7 @@ See **`FLOW_DEPLOY_SCOPE.md`** for v18 vs v19 behaviour and deploy scope.
 
 | When (UTC)        | Org        | Deploy Id          | Components | Tests |
 |-------------------|------------|--------------------|------------|-------|
+| 2026-04-08        | ucsf-prod  | `0AfPj0000023u2vKAA` | Apex `PaymentReceivedEmailInvocable` (+ tests), Flow `Payment_Processing_Marking_Students_as_Paid` (Apex action for HTML payment email) | RunSpecifiedTests: 66 pass (StudentEmail, InvoiceController, Notify, PaymentReceivedEmail) |
 | 2026-04-07        | ucsf-prod  | `0AfPj0000023pmPKAQ` | Flow `Payment_Processing_Marking_Students_as_Paid` (`emailSimple` → **`richTextEmailBody`** for HTML email) | RunSpecifiedTests: 63 pass |
 | 2026-04-09        | ucsf-prod  | `0AfPj0000023nz7KAA` | 2 Flows (`Payment_Processing_Marking_Students_as_Paid`, `Program_Enrollment_Notification_to_Enrollee`) | RunSpecifiedTests: 63 pass |
 | 2026-03-27 13:54Z | ucsf-prod  | `0AfPj0000022ygTKAQ` | 36         | 74 / 74 pass |

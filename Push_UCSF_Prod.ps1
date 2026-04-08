@@ -14,7 +14,8 @@
 
 .PARAMETER QuickTests
   Use RunSpecifiedTests with ProgramEnrollmentStudentEmail_Tests,
-  ProgramEnrollmentInvoiceController_Tests, and ProgramEnrollmentNotify_Tests (faster).
+  ProgramEnrollmentInvoiceController_Tests, ProgramEnrollmentNotify_Tests,
+  EnrollmentEmailTemplateConfig_Tests, and PaymentReceivedEmailInvocable_Tests (faster).
   Recommended for this repo. If deploy fails on coverage, run again without -QuickTests.
 
 .PARAMETER ValidateOnly
@@ -114,7 +115,8 @@ if ($QuickTests) {
         "--tests", "ProgramEnrollmentStudentEmail_Tests",
         "--tests", "ProgramEnrollmentInvoiceController_Tests",
         "--tests", "ProgramEnrollmentNotify_Tests",
-        "--tests", "EnrollmentEmailTemplateConfig_Tests"
+        "--tests", "EnrollmentEmailTemplateConfig_Tests",
+        "--tests", "PaymentReceivedEmailInvocable_Tests"
     )
 }
 else {

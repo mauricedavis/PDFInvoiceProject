@@ -5,23 +5,60 @@
         <label>Send payment received email to student</label>
         <locationX>176</locationX>
         <locationY>1379</locationY>
-        <actionName>PaymentReceivedEmailInvocable</actionName>
-        <actionType>apex</actionType>
+        <actionName>emailSimple</actionName>
+        <actionType>emailSimple</actionType>
         <flowTransactionModel>CurrentTransaction</flowTransactionModel>
         <inputParameters>
-            <name>opportunityId</name>
+            <name>senderType</name>
+            <value>
+                <stringValue>OrgWideEmailAddress</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>senderAddress</name>
+            <value>
+                <stringValue>implementationscience@ucsf.edu</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>useEmailTemplate</name>
+            <value>
+                <stringValue>False</stringValue>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>emailSubject</name>
+            <value>
+                <elementReference>formula_Payment_Confirmation_Subject</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>richTextEmailBody</name>
+            <value>
+                <elementReference>textTmpl_Payment_Confirmation_Html</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>recipientId</name>
+            <value>
+                <elementReference>Get_Student_Program_Enrollment.hed__Contact__c</elementReference>
+            </value>
+        </inputParameters>
+        <inputParameters>
+            <name>relatedRecordId</name>
             <value>
                 <elementReference>$Record.Id</elementReference>
             </value>
         </inputParameters>
         <inputParameters>
-            <name>programEnrollmentId</name>
+            <name>logEmailOnSend</name>
             <value>
-                <elementReference>Get_Student_Program_Enrollment.Id</elementReference>
+                <booleanValue>true</booleanValue>
             </value>
         </inputParameters>
-        <nameSegment>PaymentReceivedConfirmationEmailInvocable</nameSegment>
+        <nameSegment>emailSimple</nameSegment>
         <offset>0</offset>
+        <versionString>2.0.1</versionString>
     </actionCalls>
     <apiVersion>63.0</apiVersion>
     <assignments>
@@ -110,8 +147,8 @@
     </decisions>
     <description>To assist financial team to mark students&apos; records when payment received, as well as mark the Program Enrollment, Term Enrollment, &amp; Course Enrollment(s) records appropriately.
 
-04.08.2026 — Payment confirmation is sent via Apex (PaymentReceivedEmailInvocable) with setHtmlBody; Flow emailSimple does not support richTextEmailBody in this org.
-04.07.2026 — When the related Program Enrollment is Implementation Science (Account name contains &quot;Implementation Science&quot;) and the student Contact has an email, sends payment-received confirmation from implementationscience@ucsf.edu (OWEA). Entry: Opportunity Stage = &quot;Full Payment Received&quot; with record-changed-to-meet-criteria (transition only).</description>
+04.08.2026 — Payment email body uses Text Template (rich/HTML) so clients render paragraphs, links, and logo; not a plain-text formula string.
+04.07.2026 — After updates, when the related Program Enrollment is Implementation Science (Account name contains &quot;Implementation Science&quot;) and the student Contact has an email, sends a payment-received confirmation from implementationscience@ucsf.edu. Entry remains Opportunity Stage = &quot;Full Payment Received&quot; with record-changed-to-meet-criteria (transition only).</description>
     <environments>Default</environments>
     <formulas>
         <name>formula_Has_Student_Email</name>
@@ -122,6 +159,21 @@
         <name>formula_Is_Implementation_Science_Program</name>
         <dataType>Boolean</dataType>
         <expression>CONTAINS(UPPER(BLANKVALUE({!Get_Student_Program_Enrollment.hed__Account__r.Name}, &quot;&quot;)), &quot;IMPLEMENTATION SCIENCE&quot;)</expression>
+    </formulas>
+    <formulas>
+        <name>formula_Payment_Confirmation_Subject</name>
+        <dataType>String</dataType>
+        <expression>&quot;Thank you — we received your payment&quot;</expression>
+    </formulas>
+    <formulas>
+        <name>formula_Payment_Email_FirstName</name>
+        <dataType>String</dataType>
+        <expression>BLANKVALUE({!Get_Student_Program_Enrollment.hed__Contact__r.FirstName}, &quot;there&quot;)</expression>
+    </formulas>
+    <formulas>
+        <name>formula_Payment_Email_ProgramName</name>
+        <dataType>String</dataType>
+        <expression>BLANKVALUE({!Get_Student_Program_Enrollment.hed__Account__r.Name}, &quot;your program&quot;)</expression>
     </formulas>
     <interviewLabel>Payment Processing: Marking Students as Paid {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Payment Processing: Marking Students as Paid</label>
@@ -281,6 +333,19 @@
         <triggerType>RecordAfterSave</triggerType>
     </start>
     <status>Active</status>
+    <textTemplates>
+        <name>textTmpl_Payment_Confirmation_Html</name>
+        <isViewedAsPlainText>false</isViewedAsPlainText>
+        <text>&lt;div style=&quot;font-family: Segoe UI, Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.5; max-width: 560px;&quot;&gt;
+&lt;p style=&quot;margin: 0 0 16px 0;&quot;&gt;&lt;img src=&quot;https://www.ucsf.edu/sites/default/files/2019-05/ucsflogo_rgb.png&quot; width=&quot;160&quot; alt=&quot;UCSF&quot; style=&quot;border: 0; display: block;&quot; /&gt;&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;Hello {!formula_Payment_Email_FirstName},&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;Thank you, we received your payment. You are enrolled in &lt;strong&gt;{!formula_Payment_Email_ProgramName}&lt;/strong&gt;.&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;Course dates and enrollment policies can be found through the &lt;a href=&quot;https://implementationscience.ucsf.edu/&quot;&gt;UCSF Implementation Science Training Program&amp;#39;s main page&lt;/a&gt;.&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;If you wish to change this enrollment, please reach out to us as soon as possible at &lt;a href=&quot;mailto:ImplementationScience@ucsf.edu&quot;&gt;ImplementationScience@ucsf.edu&lt;/a&gt;.&lt;/p&gt;
+&lt;p style=&quot;margin: 0 0 12px 0;&quot;&gt;Thank you. We look forward to working with you.&lt;/p&gt;
+&lt;p style=&quot;margin: 16px 0 0 0; color: #555555;&quot;&gt;&amp;mdash; The UCSF Implementation Science Team&lt;/p&gt;
+&lt;/div&gt;</text>
+    </textTemplates>
     <variables>
         <description>Collection variable of Course Enrollment records.</description>
         <name>varCollectionCourseEnrollments</name>

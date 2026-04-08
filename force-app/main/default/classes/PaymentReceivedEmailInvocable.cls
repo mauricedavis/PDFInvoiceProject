@@ -6,11 +6,18 @@ public without sharing class PaymentReceivedEmailInvocable {
 
     private static final String PROGRAM_OFFICE_FROM_EMAIL = 'implementationscience@ucsf.edu';
     private static final String SUBJECT = 'Thank you \u2014 we received your payment';
-    private static final String LOGO_URL =
-        'https://www.ucsf.edu/sites/default/files/2019-05/ucsflogo_rgb.png';
+    /** Public UCSF theme asset (SVG). Fallback when Static Resource is missing; many clients prefer inline PNG (CID). */
+    private static final String LOGO_FALLBACK_URL = 'https://www.ucsf.edu/themes/custom/ucsf/logo.svg';
+
+    private static final String LOGO_STATIC_RESOURCE_NAME = 'UCSF_ImplSci_EmailLogo';
+    /** Must match EmailFileAttachment fileName for inline images (EmailFileAttachment has no setContentId in Apex). */
+    private static final String LOGO_INLINE_FILENAME = 'ucsf-implsci-logo.png';
 
     private static Id cachedProgramOfficeOweaId;
     private static Boolean programOfficeOweaLookupDone = false;
+
+    private static Blob cachedLogoBody;
+    private static Boolean logoBodyLookupDone = false;
 
     /** Set during sendPaymentConfirmation; used in tests instead of calling Messaging.sendEmail (OWEA/domain rules). */
     @TestVisible
@@ -60,6 +67,8 @@ public without sharing class PaymentReceivedEmailInvocable {
 
         List<Messaging.SingleEmailMessage> toSend = new List<Messaging.SingleEmailMessage>();
         Id oweaId = getProgramOfficeOrgWideEmailAddressId();
+        Blob logoBody = getLogoBodyFromStaticResource();
+        String logoImgSrc = logoBody != null ? 'cid:' + LOGO_INLINE_FILENAME : LOGO_FALLBACK_URL;
 
         for (Request r : requests) {
             if (r == null || r.opportunityId == null || r.programEnrollmentId == null) {
@@ -87,7 +96,14 @@ public without sharing class PaymentReceivedEmailInvocable {
             msg.setTreatTargetObjectAsRecipient(true);
             msg.setSaveAsActivity(true);
             msg.setSubject(SUBJECT);
-            msg.setHtmlBody(buildHtmlBody(htmlEsc(firstName), htmlEsc(programName)));
+            msg.setHtmlBody(buildHtmlBody(htmlEsc(firstName), htmlEsc(programName), logoImgSrc));
+            if (logoBody != null) {
+                Messaging.EmailFileAttachment logoAtt = new Messaging.EmailFileAttachment();
+                logoAtt.setFileName(LOGO_INLINE_FILENAME);
+                logoAtt.setBody(logoBody);
+                logoAtt.setInline(true);
+                msg.setFileAttachments(new List<Messaging.EmailFileAttachment>{ logoAtt });
+            }
             if (oweaId != null) {
                 msg.setOrgWideEmailAddressId(oweaId);
             }
@@ -134,6 +150,21 @@ public without sharing class PaymentReceivedEmailInvocable {
         return cachedProgramOfficeOweaId;
     }
 
+    private static Blob getLogoBodyFromStaticResource() {
+        if (logoBodyLookupDone) {
+            return cachedLogoBody;
+        }
+        logoBodyLookupDone = true;
+        List<StaticResource> rows = [
+            SELECT Body
+            FROM StaticResource
+            WHERE Name = :LOGO_STATIC_RESOURCE_NAME
+            LIMIT 1
+        ];
+        cachedLogoBody = rows.isEmpty() ? null : rows[0].Body;
+        return cachedLogoBody;
+    }
+
     private static String htmlEsc(String s) {
         if (s == null) {
             return '';
@@ -144,10 +175,14 @@ public without sharing class PaymentReceivedEmailInvocable {
             .replace('"', '&quot;');
     }
 
-    private static String buildHtmlBody(String firstNameEscaped, String programNameEscaped) {
+    private static String buildHtmlBody(
+        String firstNameEscaped,
+        String programNameEscaped,
+        String logoImgSrc
+    ) {
         return '<div style="font-family: Segoe UI, Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.5; max-width: 560px;">'
             + '<p style="margin: 0 0 16px 0;"><img src="'
-            + LOGO_URL
+            + logoImgSrc
             + '" width="160" alt="UCSF" style="border: 0; display: block;" /></p>'
             + '<p style="margin: 0 0 12px 0;">Hello '
             + firstNameEscaped

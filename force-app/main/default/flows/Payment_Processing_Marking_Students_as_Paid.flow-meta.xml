@@ -20,7 +20,7 @@
                 <elementReference>Get_Student_Program_Enrollment.Id</elementReference>
             </value>
         </inputParameters>
-        <nameSegment>PaymentReceivedConfirmationEmailInvocable</nameSegment>
+        <nameSegment>PaymentReceivedEmailInvocable</nameSegment>
         <offset>0</offset>
     </actionCalls>
     <apiVersion>63.0</apiVersion>

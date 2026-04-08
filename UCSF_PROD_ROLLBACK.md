@@ -12,7 +12,8 @@ Before redeploying an older flow from Git, confirm you have a **pre-change** cop
 
 | Flow (API name) | Pre-deploy snapshot in this repo | Notes |
 |-----------------|----------------------------------|--------|
-| `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-08.flow-meta.xml` | **Latest payment-email rollback:** prod immediately before **Apex HTML send** (`PaymentReceivedEmailInvocable`); prior flow still used `emailSimple` / invalid `richTextEmailBody` in Builder. Also roll back/remove Apex per §5. |
+| `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-08_pre_inline_logo.flow-meta.xml` | Prod immediately before **inline logo** deploy (`UCSF_ImplSci_EmailLogo` static resource + `nameSegment` fix). Roll back **StaticResource** + Apex + flow from Git if undoing. |
+| `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-08.flow-meta.xml` | Prod before first **2026-04-08** payment batch (earlier same-day capture). |
 | `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-07.flow-meta.xml` | Before **`richTextEmailBody`** attempt (plain `emailBody`, raw HTML in Gmail). |
 | `Payment_Processing_Marking_Students_as_Paid` | `flow-snapshots/Payment_Processing_Marking_Students_as_Paid_PRE_DEPLOY_ucsf_prod_2026-04-09.flow-meta.xml` | Earlier prod capture (payment + enrollee batch deploy). |
 | `Program_Enrollment_Notification_to_Enrollee` | `flow-snapshots/Program_Enrollment_Notification_to_Enrollee_PRE_DEPLOY_ucsf_prod_2026-04-09.flow-meta.xml` | Before enrollee / payment-related flow updates in that batch. |
@@ -51,6 +52,7 @@ Salesforce does not offer one-click “revert deployment” for Apex. Options:
   `ProgramEnrollmentInvoiceController`, `ProgramEnrollmentInvoiceQueueable`, `ProgramEnrollmentInvoiceBatch`, and tests `ProgramEnrollmentInvoiceController_Tests`. Revert those together so readiness + stale-invoice logic stays consistent.
 - **Student confirmation email**: `ProgramEnrollmentStudentEmail`, `ProgramEnrollmentStudentEmailQueueable`, `PEInvoiceActionOne`, etc.
 - **Payment received (Implementation Science) HTML email**: `PaymentReceivedEmailInvocable`, `PaymentReceivedEmailInvocable_Tests` — revert/deploy together with the Payment flow if you undo the Apex-based send.
+- **Payment email logo**: Static Resource **`UCSF_ImplSci_EmailLogo`** — remove or replace in org if you revert the inline-logo change (Apex references it by name).
 - Or deploy from a **branch/tag** that matches pre-change prod.
 
 ## 6. Full project rollback
@@ -67,6 +69,7 @@ See **`FLOW_DEPLOY_SCOPE.md`** for v18 vs v19 behaviour and deploy scope.
 
 | When (UTC)        | Org        | Deploy Id          | Components | Tests |
 |-------------------|------------|--------------------|------------|-------|
+| 2026-04-08        | ucsf-prod  | `0AfPj0000023uAzKAI` | StaticResource `UCSF_ImplSci_EmailLogo`, Apex `PaymentReceivedEmailInvocable` (+ tests), Flow `Payment_Processing_Marking_Students_as_Paid` (inline logo + `nameSegment` fix) | RunSpecifiedTests: 67 pass (+ EnrollmentEmailTemplateConfig_Tests) |
 | 2026-04-08        | ucsf-prod  | `0AfPj0000023u2vKAA` | Apex `PaymentReceivedEmailInvocable` (+ tests), Flow `Payment_Processing_Marking_Students_as_Paid` (Apex action for HTML payment email) | RunSpecifiedTests: 66 pass (StudentEmail, InvoiceController, Notify, PaymentReceivedEmail) |
 | 2026-04-07        | ucsf-prod  | `0AfPj0000023pmPKAQ` | Flow `Payment_Processing_Marking_Students_as_Paid` (`emailSimple` → **`richTextEmailBody`** for HTML email) | RunSpecifiedTests: 63 pass |
 | 2026-04-09        | ucsf-prod  | `0AfPj0000023nz7KAA` | 2 Flows (`Payment_Processing_Marking_Students_as_Paid`, `Program_Enrollment_Notification_to_Enrollee`) | RunSpecifiedTests: 63 pass |

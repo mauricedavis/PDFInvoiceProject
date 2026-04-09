@@ -155,6 +155,28 @@ private class ProgramEnrollmentInvoiceController_Tests {
     }
 
     @isTest
+    static void test_IsProgramEnrollmentFullyEnrolledForConfirmationSkip() {
+        Id peId = programEnrollmentReadyForInvoiceId();
+        System.assert(
+            !ProgramEnrollmentInvoiceController.isProgramEnrollmentFullyEnrolledForConfirmationSkip(peId),
+            'Payment Pending should not skip student confirmation queue.'
+        );
+
+        hed__Program_Enrollment__c pe = [SELECT Id FROM hed__Program_Enrollment__c WHERE Id = :peId];
+        pe.hed__Enrollment_Status__c = 'Currently Enrolled';
+        update pe;
+
+        System.assert(
+            ProgramEnrollmentInvoiceController.isProgramEnrollmentFullyEnrolledForConfirmationSkip(peId),
+            'Currently Enrolled should skip registration+invoice confirmation enqueue after payment.'
+        );
+        System.assert(
+            !ProgramEnrollmentInvoiceController.isProgramEnrollmentFullyEnrolledForConfirmationSkip(null),
+            'Null id should not be treated as enrolled.'
+        );
+    }
+
+    @isTest
     static void test_TriggerCore_nullOrEmptyNewRows_noOp() {
         CourseEnrollmentInvoiceTriggerCore.afterInsertOrUpdate(null, null, false);
         CourseEnrollmentInvoiceTriggerCore.afterInsertOrUpdate(new List<hed__Course_Enrollment__c>(), null, false);

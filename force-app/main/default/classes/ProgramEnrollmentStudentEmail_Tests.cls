@@ -634,6 +634,51 @@ private class ProgramEnrollmentStudentEmail_Tests {
         );
     }
 
+    @IsTest
+    static void queueableSkipsProgramEnrollmentConfirmationWhenCurrentlyEnrolled() {
+        hed__Program_Enrollment__c pe = [
+            SELECT Id, hed__Contact__c
+            FROM hed__Program_Enrollment__c
+            LIMIT 1
+        ];
+        ContentVersion rv = new ContentVersion(
+            Title          = 'Responses_CE',
+            PathOnClient   = 'R.pdf',
+            VersionData    = Blob.valueOf('r'),
+            IsMajorVersion = true
+        );
+        insert rv;
+        Id docId = [SELECT ContentDocumentId FROM ContentVersion WHERE Id = :rv.Id LIMIT 1].ContentDocumentId;
+        insert new ContentDocumentLink(
+            ContentDocumentId = docId,
+            LinkedEntityId    = pe.hed__Contact__c,
+            ShareType         = 'V',
+            Visibility        = 'AllUsers'
+        );
+        ContentVersion iv = new ContentVersion(
+            Title                  = 'Invoice_CE',
+            PathOnClient           = 'I.pdf',
+            VersionData            = Blob.valueOf('i'),
+            IsMajorVersion         = true,
+            FirstPublishLocationId = pe.Id
+        );
+        insert iv;
+
+        pe.hed__Enrollment_Status__c = 'Currently Enrolled';
+        update pe;
+
+        Integer beforeCnt = countStudentConfirmationActivity(pe.Id);
+        Test.startTest();
+        System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(new List<Id>{ pe.Id }));
+        Test.stopTest();
+
+        System.assertEquals(
+            beforeCnt,
+            countStudentConfirmationActivity(pe.Id),
+            'Queueable must not send registration+invoice email when PE is Already Currently Enrolled (payment path).'
+        );
+    }
+
     /** Production logs EmailMessage; unit tests log Task. Count either (exclude legacy dedupe-token tasks). */
     private static Integer countStudentConfirmationActivity(Id peId) {
         Integer emCnt = [

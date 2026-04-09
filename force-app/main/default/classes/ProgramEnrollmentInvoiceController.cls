@@ -243,12 +243,35 @@ public without sharing class ProgramEnrollmentInvoiceController {
     }
 
     /**
-     * Flow/Invocable actions that call generateAttachAndEmail directly never hit ProgramEnrollmentInvoiceBatch.finish,
-     * so student confirmation (Course Registration + invoice PDFs) was never chained. Trigger→Queueable→Batch already
-     * enqueues ProgramEnrollmentStudentEmailQueueable; calling this from invocables is safe (sendStudentEmailInternal dedupes).
+     * True when Payment Processing has set hed__Enrollment_Status__c to &quot;Currently Enrolled&quot; (must match that flow).
+     * Used to skip enqueueing registration+invoice confirmation when an AsyncAfterCommit enrollee-flow interview runs after payment.
+     */
+    @TestVisible
+    public static Boolean isProgramEnrollmentFullyEnrolledForConfirmationSkip(Id programEnrollmentId) {
+        if (programEnrollmentId == null) {
+            return false;
+        }
+        List<hed__Program_Enrollment__c> rows = [
+            SELECT hed__Enrollment_Status__c
+            FROM hed__Program_Enrollment__c
+            WHERE Id = :programEnrollmentId
+            LIMIT 1
+        ];
+        if (rows.isEmpty()) {
+            return false;
+        }
+        return 'Currently Enrolled'.equals(rows[0].hed__Enrollment_Status__c);
+    }
+
+    /**
+     * Chains ProgramEnrollmentStudentEmailQueueable after invoice work. Skips when PE is already &quot;Currently Enrolled&quot;
+     * (payment path) so the enrollee flow does not re-queue registration+invoice email. No-op in tests.
      */
     public static void enqueueStudentConfirmationAfterInvoice(Id programEnrollmentId) {
         if (programEnrollmentId == null || Test.isRunningTest()) {
+            return;
+        }
+        if (isProgramEnrollmentFullyEnrolledForConfirmationSkip(programEnrollmentId)) {
             return;
         }
         System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(new List<Id>{ programEnrollmentId }));

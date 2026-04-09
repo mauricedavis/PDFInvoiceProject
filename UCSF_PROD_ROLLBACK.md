@@ -69,6 +69,8 @@ See **`FLOW_DEPLOY_SCOPE.md`** for v18 vs v19 behaviour and deploy scope.
 
 | When (UTC)        | Org        | Deploy Id          | Components | Tests |
 |-------------------|------------|--------------------|------------|-------|
+| 2026-04-08        | ucsf-fullsb | `0Afbb00000Bgg2vCAB` | `ProgramEnrollmentStudentEmailQueueable` (skip confirmation when PE `Currently Enrolled`), `ProgramEnrollmentInvoiceController` (`enqueue` skip + test helper), tests | RunSpecifiedTests: StudentEmail + InvoiceController 45/45 pass |
+| 2026-04-08        | ucsf-prod  | `0AfPj00000240TJKAY` | Same as prior fullsb row | RunSpecifiedTests: 45/45 pass |
 | 2026-04-08        | ucsf-fullsb | `0Afbb00000BgdufCAB` | Apex `PaymentReceivedEmailInvocable` + tests (no logo; enrollment line from Course Connection / offering) | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 10/10 pass |
 | 2026-04-08        | ucsf-prod  | `0AfPj00000240OTKAY` | Same as prior fullsb row | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 10/10 pass |
 | 2026-04-08        | ucsf-fullsb | `0Afbb00000BfimjCAB` | Apex `PaymentReceivedEmailInvocable`, StaticResource `ImplemenationScienceLogo` (+ tests unchanged) | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 3/3 pass |

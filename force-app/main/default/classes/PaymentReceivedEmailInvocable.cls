@@ -331,7 +331,7 @@ public without sharing class PaymentReceivedEmailInvocable {
             + '<p style="margin: 0 0 12px 0;">Thank you, we received your payment. You are enrolled in <strong>'
             + enrolledInEscaped
             + '</strong>.</p>'
-            + '<p style="margin: 0 0 12px 0;">Course dates and enrollment policies can be found through the <a href="https://implementationscience.ucsf.edu/">UCSF Implementation Science Training Program&#39;s main page</a>.</p>'
+            + '<p style="margin: 0 0 12px 0;">Course dates and enrollment policies can be found through the <a href="https://epibiostat.ucsf.edu/online-certificate-implementation-science">UCSF Implementation Science Training Program&#39;s main page</a>.</p>'
             + '<p style="margin: 0 0 12px 0;">If you wish to change this enrollment, please reach out to us as soon as possible at <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.</p>'
             + '<p style="margin: 0 0 12px 0;">Thank you. We look forward to working with you.</p>'
             + '<p style="margin: 16px 0 0 0; color: #555555;">&mdash; The UCSF Implementation Science Team</p>'

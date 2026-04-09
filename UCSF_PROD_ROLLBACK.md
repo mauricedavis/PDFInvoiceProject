@@ -69,6 +69,8 @@ See **`FLOW_DEPLOY_SCOPE.md`** for v18 vs v19 behaviour and deploy scope.
 
 | When (UTC)        | Org        | Deploy Id          | Components | Tests |
 |-------------------|------------|--------------------|------------|-------|
+| 2026-04-08        | ucsf-fullsb | `0Afbb00000BgdufCAB` | Apex `PaymentReceivedEmailInvocable` + tests (no logo; enrollment line from Course Connection / offering) | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 10/10 pass |
+| 2026-04-08        | ucsf-prod  | `0AfPj00000240OTKAY` | Same as prior fullsb row | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 10/10 pass |
 | 2026-04-08        | ucsf-fullsb | `0Afbb00000BfimjCAB` | Apex `PaymentReceivedEmailInvocable`, StaticResource `ImplemenationScienceLogo` (+ tests unchanged) | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 3/3 pass |
 | 2026-04-08        | ucsf-prod  | `0AfPj0000023uVxKAI` | Same subset as fullsb row (metadata deploy; org-domain logo URL, no inline attachment) | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 3/3 pass |
 | 2026-04-08        | ucsf-prod  | `0AfPj0000023uAzKAI` | StaticResource `UCSF_ImplSci_EmailLogo`, Apex `PaymentReceivedEmailInvocable` (+ tests), Flow `Payment_Processing_Marking_Students_as_Paid` (inline logo + `nameSegment` fix) | RunSpecifiedTests: 67 pass (+ EnrollmentEmailTemplateConfig_Tests) |

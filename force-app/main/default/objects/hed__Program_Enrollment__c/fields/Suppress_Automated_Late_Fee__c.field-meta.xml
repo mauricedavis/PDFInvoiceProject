@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Suppress_Automated_Late_Fee__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>When checked, the Program Enrollment Apply Late Fee flow sets Enrollment Late Fee to $0 and skips the standard late-fee calculation. Use when a course offering start date is later than the term (e.g. a section that starts mid-term).</description>
+    <inlineHelpText>Check when the student&apos;s course section starts on a different schedule than the term start; suppresses the standard late fee from automation.</inlineHelpText>
+    <label>Suppress Automated Late Fee</label>
+    <trackTrending>false</trackTrending>
+    <type>Checkbox</type>
+</CustomField>

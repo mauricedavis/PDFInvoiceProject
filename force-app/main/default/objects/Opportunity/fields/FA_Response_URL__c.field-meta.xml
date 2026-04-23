@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>FA_Response_URL__c</fullName>
+    <description>URL passed from FormAssembly when the Opportunity results from a form submission.</description>
+    <inlineHelpText>URL passed from FormAssembly when the Opportunity results from a form submission.</inlineHelpText>
+    <label>FA Response URL</label>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Url</type>
+</CustomField>

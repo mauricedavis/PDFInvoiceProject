@@ -83,4 +83,20 @@ private class TermPayOppDupBlockerTest {
         System.assert(results[0].isSuccess(), results[0].getErrors().toString());
         System.assert(!results[1].isSuccess(), 'Second no-FA row should fail when FA row is in same batch.');
     }
+
+    @isTest
+    static void faInsertRemovesPriorNoFaOppForSameTe() {
+        Fixture f = createFixture();
+        insert baseOpp(f.te.Id, f.accountId, null);
+        Opportunity faRow = baseOpp(f.te.Id, f.accountId, 'https://example.com/fa/999');
+        faRow.Name = 'Payment Test Opp FA';
+        insert faRow;
+        List<Opportunity> remaining = [
+            SELECT Id, FA_Response_URL__c
+            FROM Opportunity
+            WHERE Term_Enrollment__c = :f.te.Id
+        ];
+        System.assertEquals(1, remaining.size(), 'FA insert should replace the no-FA orphan.');
+        System.assert(String.isNotBlank(remaining[0].FA_Response_URL__c));
+    }
 }

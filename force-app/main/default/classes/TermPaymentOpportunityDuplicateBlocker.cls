@@ -1,7 +1,7 @@
 /**
- * Blocks a second "automation style" Term Payment opportunity (no FA Response URL) when
- * a Payment Due Term Payment Opp already exists for the same Term Enrollment — in the
- * database or in the same insert batch (including when another row in the batch has FA).
+ * Ensures the FormAssembly Term Payment opportunity (FA_Response_URL__c populated) is the one that remains:
+ * 1) Before a FA insert, deletes any existing Payment Due Term Payment Opp for the same Term Enrollment that has no FA URL (automation orphan).
+ * 2) Blocks new inserts without FA URL when a Payment Due Term Payment Opp already exists for that TE (DB or same batch), or when another row in the batch has FA for that TE.
  */
 public with sharing class TermPaymentOpportunityDuplicateBlocker {
     private static final String TERM_PAYMENT_RT = 'Term_Payment';
@@ -12,6 +12,8 @@ public with sharing class TermPaymentOpportunityDuplicateBlocker {
         if (termPaymentRtId == null) {
             return;
         }
+
+        deleteNoFaOrphansWhenFaRowInserts(newRows, termPaymentRtId);
 
         Map<Id, Boolean> teHasFaLinkedRowInBatch = new Map<Id, Boolean>();
         for (Opportunity o : newRows) {
@@ -71,6 +73,37 @@ public with sharing class TermPaymentOpportunityDuplicateBlocker {
                 continue;
             }
             teClaimedByNoFaInThisBatch.add(te);
+        }
+    }
+
+    /**
+     * FormAssembly row is authoritative: remove an older automation-created Opp (same TE, no FA URL)
+     * so the FA insert does not leave two rows.
+     */
+    private static void deleteNoFaOrphansWhenFaRowInserts(List<Opportunity> newRows, Id termPaymentRtId) {
+        Set<Id> teIds = new Set<Id>();
+        for (Opportunity o : newRows) {
+            if (!isTermPaymentPaymentDueCandidate(o, termPaymentRtId)) {
+                continue;
+            }
+            if (String.isNotBlank(o.FA_Response_URL__c)) {
+                teIds.add(o.Term_Enrollment__c);
+            }
+        }
+        if (teIds.isEmpty()) {
+            return;
+        }
+        List<Opportunity> orphans = [
+            SELECT Id
+            FROM Opportunity
+            WHERE
+                Term_Enrollment__c IN :teIds
+                AND RecordTypeId = :termPaymentRtId
+                AND StageName = :STAGE_PAYMENT_DUE
+                AND (FA_Response_URL__c = NULL OR FA_Response_URL__c = '')
+        ];
+        if (!orphans.isEmpty()) {
+            delete orphans;
         }
     }
 

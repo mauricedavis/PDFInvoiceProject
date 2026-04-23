@@ -24,7 +24,7 @@
             <label>Yes, update Amount</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v2: Removed Create_Term_Payment_Opp—FormAssembly creates the Term Payment Opp; this flow only updates Amount on an existing Opp linked to this TE. Entry unchanged: Implementation Science program name OR Total_Fees__c changed. Prevents duplicate automation Opps without FA_Response_URL__c.</description>
+    <description>04/23/2026 &lt;MJD&gt; v3: Same as v2 but match Term Payment Opp without requiring FA_Response_URL__c (newest row) so Amount updates when FA is blank. Create path remains removed.</description>
     <environments>Default</environments>
     <interviewLabel>Opportunity Term Payments - Calc Fees {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Opportunity Term Payments - Calc Fees</label>
@@ -64,15 +64,10 @@
                 <elementReference>$Record.Id</elementReference>
             </value>
         </filters>
-        <filters>
-            <field>FA_Response_URL__c</field>
-            <operator>IsNull</operator>
-            <value>
-                <booleanValue>false</booleanValue>
-            </value>
-        </filters>
         <getFirstRecordOnly>true</getFirstRecordOnly>
         <object>Opportunity</object>
+        <sortField>CreatedDate</sortField>
+        <sortOrder>Desc</sortOrder>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordUpdates>
@@ -86,13 +81,6 @@
             <operator>EqualTo</operator>
             <value>
                 <elementReference>$Record.Id</elementReference>
-            </value>
-        </filters>
-        <filters>
-            <field>FA_Response_URL__c</field>
-            <operator>IsNull</operator>
-            <value>
-                <booleanValue>false</booleanValue>
             </value>
         </filters>
         <inputAssignments>

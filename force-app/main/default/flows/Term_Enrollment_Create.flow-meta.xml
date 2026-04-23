@@ -27,6 +27,32 @@
         </rules>
     </decisions>
     <decisions>
+        <description>When a canonical Payment Due Term Payment Opp exists, delete older/sibling duplicates for this TE before Update_Payment_Opportunity runs.</description>
+        <name>Canonical_Term_Payment_Opp_Exists</name>
+        <label>Canonical Term Payment Opp exists?</label>
+        <locationX>248</locationX>
+        <locationY>833</locationY>
+        <defaultConnector>
+            <targetReference>Does_Payment_Opportunity_Exist</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No canonical Opp</defaultConnectorLabel>
+        <rules>
+            <name>Yes_canonical</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>getPaymentOpportunities.Id</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Get_Duplicate_Term_Payment_Opps</targetReference>
+            </connector>
+            <label>Yes, dedupe then continue</label>
+        </rules>
+    </decisions>
+    <decisions>
         <name>Fee_type</name>
         <label>Fee type</label>
         <locationX>545</locationX>
@@ -153,7 +179,8 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v40: getPaymentOpportunities requires FA_Response_URL__c not null (FormAssembly row) and sorts CreatedDate Desc so we update the form Opp, not a same-TE automation Opp with no FA URL. If no FA-linked Opp exists yet, no update (name sync only). Deactivate any other automation that still inserts Term Payment Opps—this repo flow does not create them as of v39.
+    <description>04/23/2026 &lt;MJD&gt; v41: Canonical Term Payment Opp = newest Payment Due + Term_Payment RT for this TE (FA optional). Deletes other matching Opps then updates canonical (Account, Name, Amount, etc.). Fixes duplicate inserts when FA_Response_URL__c is blank on both rows or only one path sets FA.
+04/23/2026 &lt;MJD&gt; v40: getPaymentOpportunities required FA_Response_URL__c not null; superseded by v41 when FA mapping is missing.
 04/23/2026 &lt;MJD&gt; v39: No new Opp inserts from this flow; FormAssembly owns create.
 04/23/2026 &lt;MJD&gt; v38: Get_Program_Enrollment_for_Payment + f_Payment_AccountId for update path.
 04/23/2026 &lt;MJD&gt; v37: Name_sync_after_payment after payment path.
@@ -303,14 +330,52 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordLookups>
-        <description>Term Payment Opp from FormAssembly for this TE: FA_Response_URL__c not null, Term_Payment RT, Payment Due. Newest CreatedDate first if multiple FA submissions.</description>
+        <description>Canonical Term Payment Opp for this TE: Term_Payment RT + Payment Due, newest CreatedDate first. FA URL is optional—two creators can leave FA blank; we consolidate onto one row.</description>
         <name>getPaymentOpportunities</name>
         <label>getPaymentOpportunities</label>
         <locationX>248</locationX>
         <locationY>755</locationY>
         <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
         <connector>
-            <targetReference>Does_Payment_Opportunity_Exist</targetReference>
+            <targetReference>Canonical_Term_Payment_Opp_Exists</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Term_Enrollment__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>RecordTypeId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>GetOpportunityRecordTypeIDforTermPayment.Id</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>StageName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Payment Due</stringValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Opportunity</object>
+        <sortField>CreatedDate</sortField>
+        <sortOrder>Desc</sortOrder>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <description>Extra Payment Due Term Payment Opps for this TE (same RT) other than the canonical newest—removed so only one unpaid Opp remains.</description>
+        <name>Get_Duplicate_Term_Payment_Opps</name>
+        <label>Get Duplicate Term Payment Opps</label>
+        <locationX>248</locationX>
+        <locationY>911</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Loop_Delete_Duplicate_Term_Payment_Opps</targetReference>
         </connector>
         <filterLogic>and</filterLogic>
         <filters>
@@ -335,18 +400,41 @@
             </value>
         </filters>
         <filters>
-            <field>FA_Response_URL__c</field>
-            <operator>IsNull</operator>
+            <field>Id</field>
+            <operator>NotEqualTo</operator>
             <value>
-                <booleanValue>false</booleanValue>
+                <elementReference>getPaymentOpportunities.Id</elementReference>
             </value>
         </filters>
-        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <getFirstRecordOnly>false</getFirstRecordOnly>
         <object>Opportunity</object>
-        <sortField>CreatedDate</sortField>
-        <sortOrder>Desc</sortOrder>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
+    <loops>
+        <description>Delete each extra Term Payment Opp so only the newest canonical row remains.</description>
+        <name>Loop_Delete_Duplicate_Term_Payment_Opps</name>
+        <label>Loop Delete Duplicate Term Payment Opps</label>
+        <locationX>248</locationX>
+        <locationY>1019</locationY>
+        <collectionReference>Get_Duplicate_Term_Payment_Opps</collectionReference>
+        <iterationOrder>Asc</iterationOrder>
+        <nextValueConnector>
+            <targetReference>Delete_Duplicate_Term_Payment_Opp</targetReference>
+        </nextValueConnector>
+        <noMoreValuesConnector>
+            <targetReference>Does_Payment_Opportunity_Exist</targetReference>
+        </noMoreValuesConnector>
+    </loops>
+    <recordDeletes>
+        <name>Delete_Duplicate_Term_Payment_Opp</name>
+        <label>Delete Duplicate Term Payment Opp</label>
+        <locationX>336</locationX>
+        <locationY>1127</locationY>
+        <connector>
+            <targetReference>Loop_Delete_Duplicate_Term_Payment_Opps</targetReference>
+        </connector>
+        <inputReference>Loop_Delete_Duplicate_Term_Payment_Opps</inputReference>
+    </recordDeletes>
     <recordUpdates>
         <name>Update_Payment_Opportunity</name>
         <label>Update Payment Opportunity</label>
@@ -372,13 +460,6 @@
             <operator>EqualTo</operator>
             <value>
                 <stringValue>Payment Due</stringValue>
-            </value>
-        </filters>
-        <filters>
-            <field>FA_Response_URL__c</field>
-            <operator>IsNull</operator>
-            <value>
-                <booleanValue>false</booleanValue>
             </value>
         </filters>
         <inputAssignments>

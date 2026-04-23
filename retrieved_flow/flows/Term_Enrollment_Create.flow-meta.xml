@@ -60,7 +60,7 @@
                 </rightValue>
             </conditions>
             <connector>
-                <targetReference>GetOpportunityRecordTypeIDforTermPayment</targetReference>
+                <targetReference>Get_Program_Enrollment_for_Payment</targetReference>
             </connector>
             <label>MOU or Ad Hoc</label>
         </rules>
@@ -79,7 +79,7 @@
             <name>Yes_Funding_Dept</name>
             <conditionLogic>and</conditionLogic>
             <conditions>
-                <leftValueReference>$Record.Program_Enrollment__r.Funding_Program_or_Department__c</leftValueReference>
+                <leftValueReference>Get_Program_Enrollment_for_Payment.Funding_Program_or_Department__c</leftValueReference>
                 <operator>IsNull</operator>
                 <rightValue>
                     <booleanValue>false</booleanValue>
@@ -179,7 +179,8 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v37: Defer Update_Term_Enrollment_Name until after payment create/update (Name_sync_after_payment). v36 still ran Name update first when TE Name was blank on insert, which re-entered this after-save flow before the payment Opp existed—duplicate Opps. Form/web submissions that pre-create a Term Payment Opp must set Term_Enrollment__c (this TE), record type Term_Payment, and stage Payment Due so getPaymentOpportunities matches and this flow updates Amount instead of creating another Opp.
+    <description>04/23/2026 &lt;MJD&gt; v38: Get_Program_Enrollment_for_Payment + f_Payment_AccountId / f_Payment_Fund_COA — Account follows refreshed PE (not only $Record.Program_Enrollment__r) so parallel interviews do not pick Contact Account vs Funding Program inconsistently; both create paths use f_Payment_AccountId; sponsored create sets Fund COA via f_Payment_Fund_COA; Update_Payment_Opportunity sets AccountId from f_Payment_AccountId plus Amount.
+04/23/2026 &lt;MJD&gt; v37: Defer Update_Term_Enrollment_Name until after payment create/update (Name_sync_after_payment). Form-created Term Payment Opps: Term_Enrollment__c + Term_Payment RT + Payment Due so getPaymentOpportunities matches.
 04/23/2026 &lt;MJD&gt; v36: Name_needs_sync at start (superseded by v37 deferral).
 04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities keys off Term_Enrollment__c + Term Payment record type + Payment Due (not Name/CloseDate).
 06/12/2025 &lt;MJD&gt; v34: Removed logic that deletes &apos;Payment Opp&apos; for this version. If needed, revert to v33.
@@ -230,6 +231,26 @@
         <dataType>Boolean</dataType>
         <expression>OR(ISBLANK({!$Record.Name}), {!$Record.Name} != {!TermEnrollmentName})</expression>
     </formulas>
+    <formulas>
+        <description>Funding Program/Department Account when PE has that lookup; otherwise the learner Contact&apos;s Account. Used for payment Opp create/update so Account matches business rules even when $Record.Program_Enrollment__r is stale vs DB.</description>
+        <name>f_Payment_AccountId</name>
+        <dataType>String</dataType>
+        <expression>IF(
+  NOT(ISBLANK({!Get_Program_Enrollment_for_Payment.Funding_Program_or_Department__c})),
+  {!Get_Program_Enrollment_for_Payment.Funding_Program_or_Department__c},
+  {!Get_Program_Enrollment_for_Payment.hed__Contact__r.AccountId}
+)</expression>
+    </formulas>
+    <formulas>
+        <description>Fund COA on Term Payment Opp only when PE is sponsored (funding dept populated); blank otherwise.</description>
+        <name>f_Payment_Fund_COA</name>
+        <dataType>String</dataType>
+        <expression>IF(
+  NOT(ISBLANK({!Get_Program_Enrollment_for_Payment.Funding_Program_or_Department__c})),
+  {!Get_Program_Enrollment_for_Payment.Fund_ID__c},
+  &quot;&quot;
+)</expression>
+    </formulas>
     <interviewLabel>Term Enrollment Create {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Term Enrollment Create or Update - After Save</label>
     <processMetadataValues>
@@ -260,7 +281,7 @@
         <inputAssignments>
             <field>AccountId</field>
             <value>
-                <elementReference>$Record.Program_Enrollment__r.hed__Contact__r.Account.Id</elementReference>
+                <elementReference>f_Payment_AccountId</elementReference>
             </value>
         </inputAssignments>
         <inputAssignments>
@@ -320,7 +341,7 @@
         <inputAssignments>
             <field>AccountId</field>
             <value>
-                <elementReference>$Record.Program_Enrollment__r.Funding_Program_or_Department__r.Id</elementReference>
+                <elementReference>f_Payment_AccountId</elementReference>
             </value>
         </inputAssignments>
         <inputAssignments>
@@ -338,7 +359,7 @@
         <inputAssignments>
             <field>Fund_COA__c</field>
             <value>
-                <elementReference>$Record.Program_Enrollment__r.Fund_ID__c</elementReference>
+                <elementReference>f_Payment_Fund_COA</elementReference>
             </value>
         </inputAssignments>
         <inputAssignments>
@@ -377,6 +398,28 @@
             <targetReference>Name_sync_after_payment</targetReference>
         </connector>
     </recordCreates>
+    <recordLookups>
+        <description>Re-query Program Enrollment so Funding_Program_or_Department__c and related Account Ids match the database (avoids split sponsored vs self outcomes when $Record.Program_Enrollment__r is stale vs parallel interviews).</description>
+        <name>Get_Program_Enrollment_for_Payment</name>
+        <label>Get Program Enrollment for Payment</label>
+        <locationX>248</locationX>
+        <locationY>539</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>GetOpportunityRecordTypeIDforTermPayment</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Program_Enrollment__c</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>hed__Program_Enrollment__c</object>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
     <recordLookups>
         <name>Get_Opportunity_Match</name>
         <label>Get Opportunity Match</label>
@@ -489,6 +532,12 @@
             <field>Term_Enrollment__c</field>
             <value>
                 <elementReference>$Record.Id</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>AccountId</field>
+            <value>
+                <elementReference>f_Payment_AccountId</elementReference>
             </value>
         </inputAssignments>
         <inputAssignments>

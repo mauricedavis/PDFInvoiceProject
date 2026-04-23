@@ -7,9 +7,9 @@
         <locationX>248</locationX>
         <locationY>863</locationY>
         <defaultConnector>
-            <targetReference>Has_funding_department</targetReference>
+            <targetReference>Name_sync_after_payment</targetReference>
         </defaultConnector>
-        <defaultConnectorLabel>No</defaultConnectorLabel>
+        <defaultConnectorLabel>No form payment Opp yet</defaultConnectorLabel>
         <rules>
             <name>yes_exists</name>
             <conditionLogic>and</conditionLogic>
@@ -63,32 +63,6 @@
                 <targetReference>Get_Program_Enrollment_for_Payment</targetReference>
             </connector>
             <label>MOU or Ad Hoc</label>
-        </rules>
-    </decisions>
-    <decisions>
-        <description>Has the lookup to Funding Department or Program field on Program Enrollment been filled out?</description>
-        <name>Has_funding_department</name>
-        <label>PE has funding department?</label>
-        <locationX>446</locationX>
-        <locationY>971</locationY>
-        <defaultConnector>
-            <targetReference>Create_Payment_Opportunity_Self</targetReference>
-        </defaultConnector>
-        <defaultConnectorLabel>No</defaultConnectorLabel>
-        <rules>
-            <name>Yes_Funding_Dept</name>
-            <conditionLogic>and</conditionLogic>
-            <conditions>
-                <leftValueReference>Get_Program_Enrollment_for_Payment.Funding_Program_or_Department__c</leftValueReference>
-                <operator>IsNull</operator>
-                <rightValue>
-                    <booleanValue>false</booleanValue>
-                </rightValue>
-            </conditions>
-            <connector>
-                <targetReference>Create_Payment_Opportunity_Sponsored</targetReference>
-            </connector>
-            <label>Yes</label>
         </rules>
     </decisions>
     <decisions>
@@ -179,15 +153,15 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v38: Get_Program_Enrollment_for_Payment + f_Payment_AccountId / f_Payment_Fund_COA — Account follows refreshed PE (not only $Record.Program_Enrollment__r) so parallel interviews do not pick Contact Account vs Funding Program inconsistently; both create paths use f_Payment_AccountId; sponsored create sets Fund COA via f_Payment_Fund_COA; Update_Payment_Opportunity sets AccountId from f_Payment_AccountId plus Amount.
-04/23/2026 &lt;MJD&gt; v37: Defer Update_Term_Enrollment_Name until after payment create/update (Name_sync_after_payment). Form-created Term Payment Opps: Term_Enrollment__c + Term_Payment RT + Payment Due so getPaymentOpportunities matches.
-04/23/2026 &lt;MJD&gt; v36: Name_needs_sync at start (superseded by v37 deferral).
-04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities keys off Term_Enrollment__c + Term Payment record type + Payment Due (not Name/CloseDate).
+    <description>04/23/2026 &lt;MJD&gt; v39: Term Payment Opportunity is created by FormAssembly only—this flow no longer inserts new Opps. When getPaymentOpportunities finds the form Opp (Term_Enrollment__c + Term_Payment RT + Payment Due), Update_Payment_Opportunity enriches Term_Enrollment__c, AccountId, Amount, Name, CloseDate, Funding_Source. If none found yet, exits to name sync only (no create).
+04/23/2026 &lt;MJD&gt; v38: Get_Program_Enrollment_for_Payment + f_Payment_AccountId for update path.
+04/23/2026 &lt;MJD&gt; v37: Name_sync_after_payment after payment path.
+04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities keys off Term_Enrollment__c + Term Payment RT + Payment Due.
 06/12/2025 &lt;MJD&gt; v34: Removed logic that deletes &apos;Payment Opp&apos; for this version. If needed, revert to v33.
-05/08/2025 &lt;MJD&gt; Added logic to check for an Opportunity when the &apos;Term Enrollment&apos; = Not enrolled. Check prevents error when no Opportunity (Payment) is found.
+05/08/2025 &lt;MJD&gt; Added logic to check for an Opportunity when the &apos;Term Enrollment&apos; = Not enrolled.
 
-1. If there is no Term Payment, creates new Opportunity of type Term Payment for the learner
-2. If Term Payment exists with stage = Payment Due, updates the Amount to reflect Total Owed on Term Enrollment</description>
+1. FormAssembly creates the Term Payment Opp; ensure it links Term_Enrollment__c, Term_Payment RT, and Payment Due so this flow can update it.
+2. This flow updates Amount (from TE), Account, name, dates, and funding fields when a matching Opp exists.</description>
     <environments>Default</environments>
     <formulas>
         <description>&quot;Term Enrollment&quot; + FirstName + LastName + Term + Program, cut to 80 char.</description>
@@ -241,16 +215,6 @@
   {!Get_Program_Enrollment_for_Payment.hed__Contact__r.AccountId}
 )</expression>
     </formulas>
-    <formulas>
-        <description>Fund COA on Term Payment Opp only when PE is sponsored (funding dept populated); blank otherwise.</description>
-        <name>f_Payment_Fund_COA</name>
-        <dataType>String</dataType>
-        <expression>IF(
-  NOT(ISBLANK({!Get_Program_Enrollment_for_Payment.Funding_Program_or_Department__c})),
-  {!Get_Program_Enrollment_for_Payment.Fund_ID__c},
-  &quot;&quot;
-)</expression>
-    </formulas>
     <interviewLabel>Term Enrollment Create {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Term Enrollment Create or Update - After Save</label>
     <processMetadataValues>
@@ -272,132 +236,6 @@
         </value>
     </processMetadataValues>
     <processType>AutoLaunchedFlow</processType>
-    <recordCreates>
-        <description>Creates a new Opportunity for the Term Enrollment with record type = Term Payment; Close Date = Term Start Date; Stage = Payment Due; Amount = Term Enrollment Total Owed, and Name = TermPaymentOpportunityName formula, Fund COA = PE Fund ID</description>
-        <name>Create_Payment_Opportunity_Self</name>
-        <label>Create Payment Opportunity (Self Pay)</label>
-        <locationX>578</locationX>
-        <locationY>1079</locationY>
-        <inputAssignments>
-            <field>AccountId</field>
-            <value>
-                <elementReference>f_Payment_AccountId</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Amount</field>
-            <value>
-                <elementReference>$Record.Total_Owed2__c</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>CloseDate</field>
-            <value>
-                <elementReference>$Record.Term_Start_Date__c</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Funding_Source__c</field>
-            <value>
-                <elementReference>$Record.Program_Enrollment__r.Funding_Source__c</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Name</field>
-            <value>
-                <elementReference>TermPaymentOpportunityName</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>RecordTypeId</field>
-            <value>
-                <elementReference>GetOpportunityRecordTypeIDforTermPayment.Id</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>StageName</field>
-            <value>
-                <stringValue>Payment Due</stringValue>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Term_Enrollment__c</field>
-            <value>
-                <elementReference>$Record.Id</elementReference>
-            </value>
-        </inputAssignments>
-        <object>Opportunity</object>
-        <storeOutputAutomatically>true</storeOutputAutomatically>
-        <connector>
-            <targetReference>Name_sync_after_payment</targetReference>
-        </connector>
-    </recordCreates>
-    <recordCreates>
-        <description>Creates a new Opportunity for the Term Enrollment with record type = Term Payment; Account = PE Funding Department or Program; Close Date = Term Start Date; Stage = Payment Due; Amount = Term Enrollment Total Owed, and Name = TermPaymentOpportunityName formula, Fund COA = PE Fund ID</description>
-        <name>Create_Payment_Opportunity_Sponsored</name>
-        <label>Create Payment Opportunity (Sponsored)</label>
-        <locationX>314</locationX>
-        <locationY>1079</locationY>
-        <inputAssignments>
-            <field>AccountId</field>
-            <value>
-                <elementReference>f_Payment_AccountId</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Amount</field>
-            <value>
-                <elementReference>$Record.Total_Owed2__c</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>CloseDate</field>
-            <value>
-                <elementReference>$Record.Term_Start_Date__c</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Fund_COA__c</field>
-            <value>
-                <elementReference>f_Payment_Fund_COA</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Funding_Source__c</field>
-            <value>
-                <elementReference>$Record.Program_Enrollment__r.Funding_Source__c</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Name</field>
-            <value>
-                <elementReference>TermPaymentOpportunityName</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>RecordTypeId</field>
-            <value>
-                <elementReference>GetOpportunityRecordTypeIDforTermPayment.Id</elementReference>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>StageName</field>
-            <value>
-                <stringValue>Payment Due</stringValue>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Term_Enrollment__c</field>
-            <value>
-                <elementReference>$Record.Id</elementReference>
-            </value>
-        </inputAssignments>
-        <object>Opportunity</object>
-        <storeOutputAutomatically>true</storeOutputAutomatically>
-        <connector>
-            <targetReference>Name_sync_after_payment</targetReference>
-        </connector>
-    </recordCreates>
     <recordLookups>
         <description>Re-query Program Enrollment so Funding_Program_or_Department__c and related Account Ids match the database (avoids split sponsored vs self outcomes when $Record.Program_Enrollment__r is stale vs parallel interviews).</description>
         <name>Get_Program_Enrollment_for_Payment</name>
@@ -538,6 +376,24 @@
             <field>AccountId</field>
             <value>
                 <elementReference>f_Payment_AccountId</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Name</field>
+            <value>
+                <elementReference>TermPaymentOpportunityName</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>CloseDate</field>
+            <value>
+                <elementReference>$Record.Term_Start_Date__c</elementReference>
+            </value>
+        </inputAssignments>
+        <inputAssignments>
+            <field>Funding_Source__c</field>
+            <value>
+                <elementReference>Get_Program_Enrollment_for_Payment.Funding_Source__c</elementReference>
             </value>
         </inputAssignments>
         <inputAssignments>

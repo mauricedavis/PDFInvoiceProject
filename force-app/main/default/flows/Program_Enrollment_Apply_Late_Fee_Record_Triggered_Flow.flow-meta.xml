@@ -48,7 +48,7 @@
             <label>Found</label>
         </rules>
     </decisions>
-    <description>When a Program Enrollment record is created, evaluate the Term Enrollments associated with it to see if one of the TE&apos;s matches the &quot;Designated Term Enrollment&quot;....if so, evaluate whether the &apos;Enrollment Deadline Date&apos; has passed and apply late fee if it is. If &quot;Suppress Automated Late Fee&quot; is true on the PE, skip that logic and set Enrollment Late Fee to $0. (Staff: use Program Enrollment - Clear Late Fee When Suppress to apply $0 on update after the record exists.)</description>
+    <description>Runs when a Program Enrollment is created or when Suppress Automated Late Fee changes. Entry formula avoids re-running when only Enrollment Late Fee is updated by this flow. If Suppress is true, sets Enrollment Late Fee to $0 and skips TE/deadline logic; otherwise evaluates Term Enrollments for the designated term and applies the standard late fee when the enrollment deadline has passed.</description>
     <environments>Default</environments>
     <interviewLabel>Program Enrollment - Apply Late Fee - Record Triggered Flow {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Program Enrollment - Apply Late Fee - Record Triggered Flow</label>
@@ -128,14 +128,12 @@
     <start>
         <locationX>0</locationX>
         <locationY>0</locationY>
+        <connector>
+            <targetReference>Check_Suppress_Automated_Late_Fee</targetReference>
+        </connector>
+        <filterFormula>OR(ISNEW(), ISCHANGED({!$Record.Suppress_Automated_Late_Fee__c}))</filterFormula>
         <object>hed__Program_Enrollment__c</object>
-        <recordTriggerType>Create</recordTriggerType>
-        <scheduledPaths>
-            <connector>
-                <targetReference>Check_Suppress_Automated_Late_Fee</targetReference>
-            </connector>
-            <pathType>AsyncAfterCommit</pathType>
-        </scheduledPaths>
+        <recordTriggerType>CreateAndUpdate</recordTriggerType>
         <triggerType>RecordAfterSave</triggerType>
     </start>
     <status>Active</status>

@@ -108,6 +108,31 @@
         </rules>
     </decisions>
     <decisions>
+        <name>Name_needs_sync</name>
+        <label>Name needs sync?</label>
+        <locationX>1089</locationX>
+        <locationY>200</locationY>
+        <defaultConnector>
+            <targetReference>Term_Enrollment_Status</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>Already matches formula</defaultConnectorLabel>
+        <rules>
+            <name>Sync_Term_Enrollment_Name</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>f_Name_needs_sync</leftValueReference>
+                <operator>EqualTo</operator>
+                <rightValue>
+                    <booleanValue>true</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_Term_Enrollment_Name</targetReference>
+            </connector>
+            <label>Blank or differs from formula</label>
+        </rules>
+    </decisions>
+    <decisions>
         <name>Term_Enrollment_Status</name>
         <label>Term Enrollment Status</label>
         <locationX>1089</locationX>
@@ -144,7 +169,8 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities now keys off Term_Enrollment__c + Term Payment record type + Payment Due (not Name/CloseDate). Prevents a second payment Opportunity when this flow runs twice in quick succession (e.g. after Update_Term_Enrollment_Name) and TermPaymentOpportunityName changes as term/contact fields hydrate.
+    <description>04/23/2026 &lt;MJD&gt; v36: Name_needs_sync + f_Name_needs_sync — only DML-update TE Name when it differs from TermEnrollmentName, so a redundant TE update does not start a second flow interview before the first creates the payment Opp.
+04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities keys off Term_Enrollment__c + Term Payment record type + Payment Due (not Name/CloseDate).
 06/12/2025 &lt;MJD&gt; v34: Removed logic that deletes &apos;Payment Opp&apos; for this version. If needed, revert to v33.
 05/08/2025 &lt;MJD&gt; Added logic to check for an Opportunity when the &apos;Term Enrollment&apos; = Not enrolled. Check prevents error when no Opportunity (Payment) is found.
 
@@ -186,6 +212,12 @@
         {!$Record.Program_Enrollment__r.hed__Account__r.Name}
     ))
 , 80)</expression>
+    </formulas>
+    <formulas>
+        <description>True when TE Name is blank or not equal to the computed standard name; skip redundant update to avoid re-entrant flow before payment Opp exists.</description>
+        <name>f_Name_needs_sync</name>
+        <dataType>Boolean</dataType>
+        <expression>OR(ISBLANK({!$Record.Name}), {!$Record.Name} != {!TermEnrollmentName})</expression>
     </formulas>
     <interviewLabel>Term Enrollment Create {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Term Enrollment Create or Update - After Save</label>
@@ -471,7 +503,7 @@
         <locationX>963</locationX>
         <locationY>0</locationY>
         <connector>
-            <targetReference>Update_Term_Enrollment_Name</targetReference>
+            <targetReference>Name_needs_sync</targetReference>
         </connector>
         <object>Term_Enrollment__c</object>
         <recordTriggerType>CreateAndUpdate</recordTriggerType>

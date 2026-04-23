@@ -19,6 +19,7 @@ coverage/
 
 # Ad-hoc org retrieves (zip + unpack); use flow-snapshots/ for versioned flow archives
 retrieved_prod_flow/
+.temp_ucsf_prod_flows/
 .tmp-retrieve-logo/
 
 # CLI retrieve working dirs (commit named copies: flow-snapshots/*_PRE_DEPLOY_*.flow-meta.xml)

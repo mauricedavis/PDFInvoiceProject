@@ -144,7 +144,7 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities keys off Term_Enrollment__c + Term Payment RT + Payment Due (not Name/CloseDate) to avoid duplicate payment Opps when flow re-runs and computed name changes.
+    <description>04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities now keys off Term_Enrollment__c + Term Payment record type + Payment Due (not Name/CloseDate). Prevents a second payment Opportunity when this flow runs twice in quick succession (e.g. after Update_Term_Enrollment_Name) and TermPaymentOpportunityName changes as term/contact fields hydrate.
 06/12/2025 &lt;MJD&gt; v34: Removed logic that deletes &apos;Payment Opp&apos; for this version. If needed, revert to v33.
 05/08/2025 &lt;MJD&gt; Added logic to check for an Opportunity when the &apos;Term Enrollment&apos; = Not enrolled. Check prevents error when no Opportunity (Payment) is found.
 
@@ -372,7 +372,7 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordLookups>
-        <description>Existing Term Payment opportunity for this Term Enrollment (Term Payment RT, Payment Due). Oldest CreatedDate first if multiple. v35: no longer match on Name+CloseDate (re-run after Update_Term_Enrollment_Name could change computed name).</description>
+        <description>Existing Term Payment opportunity for this Term Enrollment (Term Payment RT, Payment Due). Oldest wins if multiple exist. Replaces Name+CloseDate match which failed when the flow re-ran and TermPaymentOpportunityName changed.</description>
         <name>getPaymentOpportunities</name>
         <label>getPaymentOpportunities</label>
         <locationX>248</locationX>

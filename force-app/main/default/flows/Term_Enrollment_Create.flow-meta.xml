@@ -153,15 +153,16 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v39: Term Payment Opportunity is created by FormAssembly only—this flow no longer inserts new Opps. When getPaymentOpportunities finds the form Opp (Term_Enrollment__c + Term_Payment RT + Payment Due), Update_Payment_Opportunity enriches Term_Enrollment__c, AccountId, Amount, Name, CloseDate, Funding_Source. If none found yet, exits to name sync only (no create).
+    <description>04/23/2026 &lt;MJD&gt; v40: getPaymentOpportunities requires FA_Response_URL__c not null (FormAssembly row) and sorts CreatedDate Desc so we update the form Opp, not a same-TE automation Opp with no FA URL. If no FA-linked Opp exists yet, no update (name sync only). Deactivate any other automation that still inserts Term Payment Opps—this repo flow does not create them as of v39.
+04/23/2026 &lt;MJD&gt; v39: No new Opp inserts from this flow; FormAssembly owns create.
 04/23/2026 &lt;MJD&gt; v38: Get_Program_Enrollment_for_Payment + f_Payment_AccountId for update path.
 04/23/2026 &lt;MJD&gt; v37: Name_sync_after_payment after payment path.
 04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities keys off Term_Enrollment__c + Term Payment RT + Payment Due.
 06/12/2025 &lt;MJD&gt; v34: Removed logic that deletes &apos;Payment Opp&apos; for this version. If needed, revert to v33.
 05/08/2025 &lt;MJD&gt; Added logic to check for an Opportunity when the &apos;Term Enrollment&apos; = Not enrolled.
 
-1. FormAssembly creates the Term Payment Opp; ensure it links Term_Enrollment__c, Term_Payment RT, and Payment Due so this flow can update it.
-2. This flow updates Amount (from TE), Account, name, dates, and funding fields when a matching Opp exists.</description>
+1. FormAssembly creates the Term Payment Opp with FA_Response_URL__c populated; link Term_Enrollment__c, Term_Payment RT, and Payment Due.
+2. This flow updates the FA-linked Opp only (Amount, Account, Name, CloseDate, Funding_Source, Term_Enrollment__c).</description>
     <environments>Default</environments>
     <formulas>
         <description>&quot;Term Enrollment&quot; + FirstName + LastName + Term + Program, cut to 80 char.</description>
@@ -302,7 +303,7 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordLookups>
-        <description>Existing Term Payment opportunity for this Term Enrollment (Term Payment RT, Payment Due). Oldest CreatedDate wins. Matches form-created payment Opps when they use the same Term_Enrollment__c, Term_Payment RT, and Payment Due.</description>
+        <description>Term Payment Opp from FormAssembly for this TE: FA_Response_URL__c not null, Term_Payment RT, Payment Due. Newest CreatedDate first if multiple FA submissions.</description>
         <name>getPaymentOpportunities</name>
         <label>getPaymentOpportunities</label>
         <locationX>248</locationX>
@@ -333,10 +334,17 @@
                 <stringValue>Payment Due</stringValue>
             </value>
         </filters>
+        <filters>
+            <field>FA_Response_URL__c</field>
+            <operator>IsNull</operator>
+            <value>
+                <booleanValue>false</booleanValue>
+            </value>
+        </filters>
         <getFirstRecordOnly>true</getFirstRecordOnly>
         <object>Opportunity</object>
         <sortField>CreatedDate</sortField>
-        <sortOrder>Asc</sortOrder>
+        <sortOrder>Desc</sortOrder>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordUpdates>
@@ -364,6 +372,13 @@
             <operator>EqualTo</operator>
             <value>
                 <stringValue>Payment Due</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>FA_Response_URL__c</field>
+            <operator>IsNull</operator>
+            <value>
+                <booleanValue>false</booleanValue>
             </value>
         </filters>
         <inputAssignments>

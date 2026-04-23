@@ -31,6 +31,9 @@
         <label>Fee type</label>
         <locationX>545</locationX>
         <locationY>539</locationY>
+        <defaultConnector>
+            <targetReference>Name_sync_after_payment</targetReference>
+        </defaultConnector>
         <defaultConnectorLabel>Matriculated or Other</defaultConnectorLabel>
         <rules>
             <name>MOU_or_Ad_Hoc</name>
@@ -93,6 +96,9 @@
         <label>Is Payment Opportunity Found?</label>
         <locationX>1238</locationX>
         <locationY>647</locationY>
+        <defaultConnector>
+            <targetReference>Name_sync_after_payment</targetReference>
+        </defaultConnector>
         <defaultConnectorLabel>No, not found</defaultConnectorLabel>
         <rules>
             <name>Yes_found</name>
@@ -104,20 +110,21 @@
                     <booleanValue>false</booleanValue>
                 </rightValue>
             </conditions>
+            <connector>
+                <targetReference>Name_sync_after_payment</targetReference>
+            </connector>
             <label>Yes, found</label>
         </rules>
     </decisions>
     <decisions>
-        <name>Name_needs_sync</name>
-        <label>Name needs sync?</label>
+        <description>Runs after payment logic (or non-payment branches). Updating TE Name here avoids a nested after-save interview before getPaymentOpportunities can see a form-created or flow-created payment Opp.</description>
+        <name>Name_sync_after_payment</name>
+        <label>Name sync after payment path</label>
         <locationX>1089</locationX>
-        <locationY>200</locationY>
-        <defaultConnector>
-            <targetReference>Term_Enrollment_Status</targetReference>
-        </defaultConnector>
+        <locationY>1200</locationY>
         <defaultConnectorLabel>Already matches formula</defaultConnectorLabel>
         <rules>
-            <name>Sync_Term_Enrollment_Name</name>
+            <name>Sync_TE_Name_after_payment</name>
             <conditionLogic>and</conditionLogic>
             <conditions>
                 <leftValueReference>f_Name_needs_sync</leftValueReference>
@@ -137,6 +144,9 @@
         <label>Term Enrollment Status</label>
         <locationX>1089</locationX>
         <locationY>431</locationY>
+        <defaultConnector>
+            <targetReference>Name_sync_after_payment</targetReference>
+        </defaultConnector>
         <defaultConnectorLabel>Default Outcome</defaultConnectorLabel>
         <rules>
             <name>Enrolled</name>
@@ -169,7 +179,8 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v36: Name_needs_sync + f_Name_needs_sync — only DML-update TE Name when it differs from TermEnrollmentName, so a redundant TE update does not start a second flow interview before the first creates the payment Opp.
+    <description>04/23/2026 &lt;MJD&gt; v37: Defer Update_Term_Enrollment_Name until after payment create/update (Name_sync_after_payment). v36 still ran Name update first when TE Name was blank on insert, which re-entered this after-save flow before the payment Opp existed—duplicate Opps. Form/web submissions that pre-create a Term Payment Opp must set Term_Enrollment__c (this TE), record type Term_Payment, and stage Payment Due so getPaymentOpportunities matches and this flow updates Amount instead of creating another Opp.
+04/23/2026 &lt;MJD&gt; v36: Name_needs_sync at start (superseded by v37 deferral).
 04/23/2026 &lt;MJD&gt; v35: getPaymentOpportunities keys off Term_Enrollment__c + Term Payment record type + Payment Due (not Name/CloseDate).
 06/12/2025 &lt;MJD&gt; v34: Removed logic that deletes &apos;Payment Opp&apos; for this version. If needed, revert to v33.
 05/08/2025 &lt;MJD&gt; Added logic to check for an Opportunity when the &apos;Term Enrollment&apos; = Not enrolled. Check prevents error when no Opportunity (Payment) is found.
@@ -214,7 +225,7 @@
 , 80)</expression>
     </formulas>
     <formulas>
-        <description>True when TE Name is blank or not equal to the computed standard name; skip redundant update to avoid re-entrant flow before payment Opp exists.</description>
+        <description>True when TE Name is blank or not equal to the computed standard name. Used only after payment path (v37) so TE name DML does not start a nested interview before payment Opp exists.</description>
         <name>f_Name_needs_sync</name>
         <dataType>Boolean</dataType>
         <expression>OR(ISBLANK({!$Record.Name}), {!$Record.Name} != {!TermEnrollmentName})</expression>
@@ -296,6 +307,9 @@
         </inputAssignments>
         <object>Opportunity</object>
         <storeOutputAutomatically>true</storeOutputAutomatically>
+        <connector>
+            <targetReference>Name_sync_after_payment</targetReference>
+        </connector>
     </recordCreates>
     <recordCreates>
         <description>Creates a new Opportunity for the Term Enrollment with record type = Term Payment; Account = PE Funding Department or Program; Close Date = Term Start Date; Stage = Payment Due; Amount = Term Enrollment Total Owed, and Name = TermPaymentOpportunityName formula, Fund COA = PE Fund ID</description>
@@ -359,6 +373,9 @@
         </inputAssignments>
         <object>Opportunity</object>
         <storeOutputAutomatically>true</storeOutputAutomatically>
+        <connector>
+            <targetReference>Name_sync_after_payment</targetReference>
+        </connector>
     </recordCreates>
     <recordLookups>
         <name>Get_Opportunity_Match</name>
@@ -404,7 +421,7 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordLookups>
-        <description>Existing Term Payment opportunity for this Term Enrollment (Term Payment RT, Payment Due). Oldest wins if multiple exist. Replaces Name+CloseDate match which failed when the flow re-ran and TermPaymentOpportunityName changed.</description>
+        <description>Existing Term Payment opportunity for this Term Enrollment (Term Payment RT, Payment Due). Oldest CreatedDate wins. Matches form-created payment Opps when they use the same Term_Enrollment__c, Term_Payment RT, and Payment Due.</description>
         <name>getPaymentOpportunities</name>
         <label>getPaymentOpportunities</label>
         <locationX>248</locationX>
@@ -481,6 +498,9 @@
             </value>
         </inputAssignments>
         <object>Opportunity</object>
+        <connector>
+            <targetReference>Name_sync_after_payment</targetReference>
+        </connector>
     </recordUpdates>
     <recordUpdates>
         <description>Uses Term Enrollment Name formula (&quot;Term Enrollment&quot; + FirstName + LastName + Term + Program) cut to 80 char.</description>
@@ -488,9 +508,6 @@
         <label>Update Term Enrollment Name</label>
         <locationX>1089</locationX>
         <locationY>323</locationY>
-        <connector>
-            <targetReference>Term_Enrollment_Status</targetReference>
-        </connector>
         <inputAssignments>
             <field>Name</field>
             <value>
@@ -503,7 +520,7 @@
         <locationX>963</locationX>
         <locationY>0</locationY>
         <connector>
-            <targetReference>Name_needs_sync</targetReference>
+            <targetReference>Term_Enrollment_Status</targetReference>
         </connector>
         <object>Term_Enrollment__c</object>
         <recordTriggerType>CreateAndUpdate</recordTriggerType>

@@ -1,6 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
     <apiVersion>58.0</apiVersion>
+    <assignments>
+        <description>FormAssembly row wins for enrichment and dedupe when FA_Response_URL__c is populated.</description>
+        <name>Assign_Canonical_Payment_Opp_Id_From_FA</name>
+        <label>Assign canonical Opp Id from FA-linked row</label>
+        <locationX>50</locationX>
+        <locationY>863</locationY>
+        <assignmentItems>
+            <assignToReference>varCanonicalPaymentOppId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>getPaymentOpportunitiesWithFA.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Canonical_Term_Payment_Opp_Exists</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>When no FA URL on any Term Payment Opp, use newest Payment Due row (automation-only scenario).</description>
+        <name>Assign_Canonical_Payment_Opp_Id_From_Newest</name>
+        <label>Assign canonical Opp Id from newest row</label>
+        <locationX>446</locationX>
+        <locationY>863</locationY>
+        <assignmentItems>
+            <assignToReference>varCanonicalPaymentOppId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>getPaymentOpp_NewestAny.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Canonical_Term_Payment_Opp_Exists</targetReference>
+        </connector>
+    </assignments>
     <decisions>
         <name>Does_Payment_Opportunity_Exist</name>
         <label>Does Payment Opportunity Exist?</label>
@@ -14,8 +48,8 @@
             <name>yes_exists</name>
             <conditionLogic>and</conditionLogic>
             <conditions>
-                <leftValueReference>getPaymentOpportunities.Id</leftValueReference>
-                <operator>IsNull</operator>
+                <leftValueReference>varCanonicalPaymentOppId</leftValueReference>
+                <operator>IsBlank</operator>
                 <rightValue>
                     <booleanValue>false</booleanValue>
                 </rightValue>
@@ -31,7 +65,7 @@
         <name>Canonical_Term_Payment_Opp_Exists</name>
         <label>Canonical Term Payment Opp exists?</label>
         <locationX>248</locationX>
-        <locationY>833</locationY>
+        <locationY>971</locationY>
         <defaultConnector>
             <targetReference>Does_Payment_Opportunity_Exist</targetReference>
         </defaultConnector>
@@ -40,8 +74,8 @@
             <name>Yes_canonical</name>
             <conditionLogic>and</conditionLogic>
             <conditions>
-                <leftValueReference>getPaymentOpportunities.Id</leftValueReference>
-                <operator>IsNull</operator>
+                <leftValueReference>varCanonicalPaymentOppId</leftValueReference>
+                <operator>IsBlank</operator>
                 <rightValue>
                     <booleanValue>false</booleanValue>
                 </rightValue>
@@ -50,6 +84,32 @@
                 <targetReference>Get_Duplicate_Term_Payment_Opps</targetReference>
             </connector>
             <label>Yes, dedupe then continue</label>
+        </rules>
+    </decisions>
+    <decisions>
+        <description>If FormAssembly populated FA_Response_URL__c, that Opp is canonical; otherwise use newest Payment Due Term Payment Opp.</description>
+        <name>Prefer_FormAssembly_Term_Payment_Opp</name>
+        <label>Prefer FormAssembly Term Payment Opp?</label>
+        <locationX>248</locationX>
+        <locationY>755</locationY>
+        <defaultConnector>
+            <targetReference>getPaymentOpp_NewestAny</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No FA-linked Opp</defaultConnectorLabel>
+        <rules>
+            <name>Yes_FA_linked</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>getPaymentOpportunitiesWithFA.Id</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Canonical_Payment_Opp_Id_From_FA</targetReference>
+            </connector>
+            <label>Yes, use FA-linked Opp</label>
         </rules>
     </decisions>
     <decisions>
@@ -117,7 +177,7 @@
         </rules>
     </decisions>
     <decisions>
-        <description>Runs after payment logic (or non-payment branches). Updating TE Name here avoids a nested after-save interview before getPaymentOpportunities can see a form-created or flow-created payment Opp.</description>
+        <description>Runs after payment logic (or non-payment branches). Updating TE Name here avoids a nested after-save interview before payment Opp lookups can see form-created rows.</description>
         <name>Name_sync_after_payment</name>
         <label>Name sync after payment path</label>
         <locationX>1089</locationX>
@@ -179,8 +239,9 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v41: Canonical Term Payment Opp = newest Payment Due + Term_Payment RT for this TE (FA optional). Deletes other matching Opps then updates canonical (Account, Name, Amount, etc.). Fixes duplicate inserts when FA_Response_URL__c is blank on both rows or only one path sets FA.
-04/23/2026 &lt;MJD&gt; v40: getPaymentOpportunities required FA_Response_URL__c not null; superseded by v41 when FA mapping is missing.
+    <description>04/23/2026 &lt;MJD&gt; v42: Canonical = FA-linked Term Payment Opp (FA_Response_URL__c not null) when present, else newest Payment Due + Term_Payment RT; deletes other matching Opps; updates canonical. Prevents automation-created newest row from winning over FormAssembly row.
+04/23/2026 &lt;MJD&gt; v41: Newest-only canonical; superseded by v42 when FA row must win over automation Opp.
+04/23/2026 &lt;MJD&gt; v40: FA-only matching; superseded by v41/v42.
 04/23/2026 &lt;MJD&gt; v39: No new Opp inserts from this flow; FormAssembly owns create.
 04/23/2026 &lt;MJD&gt; v38: Get_Program_Enrollment_for_Payment + f_Payment_AccountId for update path.
 04/23/2026 &lt;MJD&gt; v37: Name_sync_after_payment after payment path.
@@ -315,7 +376,7 @@
         <locationY>647</locationY>
         <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
         <connector>
-            <targetReference>getPaymentOpportunities</targetReference>
+            <targetReference>getPaymentOpportunitiesWithFA</targetReference>
         </connector>
         <filterLogic>and</filterLogic>
         <filters>
@@ -330,14 +391,59 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <recordLookups>
-        <description>Canonical Term Payment Opp for this TE: Term_Payment RT + Payment Due, newest CreatedDate first. FA URL is optional—two creators can leave FA blank; we consolidate onto one row.</description>
-        <name>getPaymentOpportunities</name>
-        <label>getPaymentOpportunities</label>
+        <description>FormAssembly Term Payment Opp: FA_Response_URL__c not null, newest first. Preferred canonical for amount/name/account updates.</description>
+        <name>getPaymentOpportunitiesWithFA</name>
+        <label>getPaymentOpportunitiesWithFA</label>
         <locationX>248</locationX>
+        <locationY>719</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Prefer_FormAssembly_Term_Payment_Opp</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Term_Enrollment__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>RecordTypeId</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>GetOpportunityRecordTypeIDforTermPayment.Id</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>StageName</field>
+            <operator>EqualTo</operator>
+            <value>
+                <stringValue>Payment Due</stringValue>
+            </value>
+        </filters>
+        <filters>
+            <field>FA_Response_URL__c</field>
+            <operator>IsNull</operator>
+            <value>
+                <booleanValue>false</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Opportunity</object>
+        <sortField>CreatedDate</sortField>
+        <sortOrder>Desc</sortOrder>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <description>Newest Payment Due Term Payment Opp when no FA-linked row exists (fallback for missing FA mapping).</description>
+        <name>getPaymentOpp_NewestAny</name>
+        <label>getPaymentOpp Newest Any</label>
+        <locationX>446</locationX>
         <locationY>755</locationY>
         <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
         <connector>
-            <targetReference>Canonical_Term_Payment_Opp_Exists</targetReference>
+            <targetReference>Assign_Canonical_Payment_Opp_Id_From_Newest</targetReference>
         </connector>
         <filterLogic>and</filterLogic>
         <filters>
@@ -403,7 +509,7 @@
             <field>Id</field>
             <operator>NotEqualTo</operator>
             <value>
-                <elementReference>getPaymentOpportunities.Id</elementReference>
+                <elementReference>varCanonicalPaymentOppId</elementReference>
             </value>
         </filters>
         <getFirstRecordOnly>false</getFirstRecordOnly>
@@ -411,7 +517,7 @@
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
     <loops>
-        <description>Delete each extra Term Payment Opp so only the newest canonical row remains.</description>
+        <description>Delete each extra Term Payment Opp so only the canonical row (FA when present, else newest) remains.</description>
         <name>Loop_Delete_Duplicate_Term_Payment_Opps</name>
         <label>Loop Delete Duplicate Term Payment Opps</label>
         <locationX>248</locationX>
@@ -445,7 +551,7 @@
             <field>Id</field>
             <operator>EqualTo</operator>
             <value>
-                <elementReference>getPaymentOpportunities.Id</elementReference>
+                <elementReference>varCanonicalPaymentOppId</elementReference>
             </value>
         </filters>
         <filters>
@@ -528,4 +634,12 @@
         <triggerType>RecordAfterSave</triggerType>
     </start>
     <status>Active</status>
+    <variables>
+        <description>Id of the Term Payment Opp to enrich and keep after dedupe (FA-linked row when present).</description>
+        <name>varCanonicalPaymentOppId</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+    </variables>
 </Flow>

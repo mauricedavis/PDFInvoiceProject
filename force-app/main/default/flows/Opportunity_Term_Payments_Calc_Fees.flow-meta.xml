@@ -1,6 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
     <apiVersion>64.0</apiVersion>
+    <assignments>
+        <name>Assign_Calc_Fees_Opp_Id_From_FA</name>
+        <label>Assign Calc Fees Opp Id from FA row</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>varCanonicalCalcFeesOppId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_Term_Payment_With_FA_URL.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Has_Term_Payment_Opp</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <name>Assign_Calc_Fees_Opp_Id_From_Newest</name>
+        <label>Assign Calc Fees Opp Id from newest</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>varCanonicalCalcFeesOppId</assignToReference>
+            <operator>Assign</operator>
+            <value>
+                <elementReference>Get_Term_Payment_Newest_Any.Id</elementReference>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Has_Term_Payment_Opp</targetReference>
+        </connector>
+    </assignments>
     <decisions>
         <description>FormAssembly creates the Term Payment Opp; only update Amount when a row exists for this TE.</description>
         <name>Has_Term_Payment_Opp</name>
@@ -12,8 +44,8 @@
             <name>Yes_has_opp</name>
             <conditionLogic>and</conditionLogic>
             <conditions>
-                <leftValueReference>Get_Term_Payment_associated_w_Term_Enrollment.Id</leftValueReference>
-                <operator>IsNull</operator>
+                <leftValueReference>varCanonicalCalcFeesOppId</leftValueReference>
+                <operator>IsBlank</operator>
                 <rightValue>
                     <booleanValue>false</booleanValue>
                 </rightValue>
@@ -24,7 +56,33 @@
             <label>Yes, update Amount</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v3: Same as v2 but match Term Payment Opp without requiring FA_Response_URL__c (newest row) so Amount updates when FA is blank. Create path remains removed.</description>
+    <decisions>
+        <description>Prefer updating Amount on the FormAssembly Opp (FA_Response_URL__c populated) when it exists.</description>
+        <name>Prefer_FA_Term_Payment_For_Calc_Fees</name>
+        <label>Prefer FA Term Payment for Calc Fees?</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <defaultConnector>
+            <targetReference>Get_Term_Payment_Newest_Any</targetReference>
+        </defaultConnector>
+        <defaultConnectorLabel>No FA row</defaultConnectorLabel>
+        <rules>
+            <name>Yes_use_FA_row</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>Get_Term_Payment_With_FA_URL.Id</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Assign_Calc_Fees_Opp_Id_From_FA</targetReference>
+            </connector>
+            <label>Yes, use FA row</label>
+        </rules>
+    </decisions>
+    <description>04/23/2026 &lt;MJD&gt; v4: Prefer FA-linked Term Payment Opp for Amount; else newest for TE. Aligns with Term_Enrollment_Create v42. Create path remains removed.</description>
     <environments>Default</environments>
     <interviewLabel>Opportunity Term Payments - Calc Fees {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Opportunity Term Payments - Calc Fees</label>
@@ -48,13 +106,14 @@
     </processMetadataValues>
     <processType>AutoLaunchedFlow</processType>
     <recordLookups>
-        <name>Get_Term_Payment_associated_w_Term_Enrollment</name>
-        <label>Get Term Payment associated w/Term Enrollment</label>
+        <description>Newest Opportunity for TE when no FA-linked row (Amount still syncs).</description>
+        <name>Get_Term_Payment_Newest_Any</name>
+        <label>Get Term Payment Newest Any</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
         <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
         <connector>
-            <targetReference>Has_Term_Payment_Opp</targetReference>
+            <targetReference>Assign_Calc_Fees_Opp_Id_From_Newest</targetReference>
         </connector>
         <filterLogic>and</filterLogic>
         <filters>
@@ -70,6 +129,37 @@
         <sortOrder>Desc</sortOrder>
         <storeOutputAutomatically>true</storeOutputAutomatically>
     </recordLookups>
+    <recordLookups>
+        <description>FormAssembly row for this TE when FA_Response_URL__c is set (preferred for fee Amount).</description>
+        <name>Get_Term_Payment_With_FA_URL</name>
+        <label>Get Term Payment With FA URL</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>true</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Prefer_FA_Term_Payment_For_Calc_Fees</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Term_Enrollment__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Id</elementReference>
+            </value>
+        </filters>
+        <filters>
+            <field>FA_Response_URL__c</field>
+            <operator>IsNull</operator>
+            <value>
+                <booleanValue>false</booleanValue>
+            </value>
+        </filters>
+        <getFirstRecordOnly>true</getFirstRecordOnly>
+        <object>Opportunity</object>
+        <sortField>CreatedDate</sortField>
+        <sortOrder>Desc</sortOrder>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
     <recordUpdates>
         <name>Update_Term_Payment</name>
         <label>Update Term Payment</label>
@@ -77,10 +167,10 @@
         <locationY>0</locationY>
         <filterLogic>and</filterLogic>
         <filters>
-            <field>Term_Enrollment__c</field>
+            <field>Id</field>
             <operator>EqualTo</operator>
             <value>
-                <elementReference>$Record.Id</elementReference>
+                <elementReference>varCanonicalCalcFeesOppId</elementReference>
             </value>
         </filters>
         <inputAssignments>
@@ -95,7 +185,7 @@
         <locationX>0</locationX>
         <locationY>0</locationY>
         <connector>
-            <targetReference>Get_Term_Payment_associated_w_Term_Enrollment</targetReference>
+            <targetReference>Get_Term_Payment_With_FA_URL</targetReference>
         </connector>
         <filterLogic>or</filterLogic>
         <filters>
@@ -117,4 +207,12 @@
         <triggerType>RecordAfterSave</triggerType>
     </start>
     <status>Active</status>
+    <variables>
+        <description>Opp Id receiving Total_Fees__c Amount (FA row when present).</description>
+        <name>varCanonicalCalcFeesOppId</name>
+        <dataType>String</dataType>
+        <isCollection>false</isCollection>
+        <isInput>false</isInput>
+        <isOutput>false</isOutput>
+    </variables>
 </Flow>

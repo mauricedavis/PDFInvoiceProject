@@ -3,7 +3,7 @@ private class ProgramEnrollmentNotify_Tests {
 
     @testSetup
     static void setupData() {
-        Account acct = new Account(Name = 'Notification Test Program');
+        Account acct = new Account(Name = 'Implementation Science Notification Test Program');
         insert acct;
 
         Contact contact = new Contact(
@@ -303,7 +303,7 @@ private class ProgramEnrollmentNotify_Tests {
 
     @IsTest
     static void test_NotifyProgramOffice_PEWithoutContact() {
-        Account acct = new Account(Name = 'Office Notify No Contact Program');
+        Account acct = new Account(Name = 'Implementation Science Office Notify No Contact');
         insert acct;
 
         hed__Program_Enrollment__c pe = new hed__Program_Enrollment__c(
@@ -365,7 +365,7 @@ private class ProgramEnrollmentNotify_Tests {
 
     @IsTest
     static void test_NotifyProgramOffice_MultipleEnrollments() {
-        Account acct = new Account(Name = 'Multi Notify Program');
+        Account acct = new Account(Name = 'Implementation Science Multi Notify Program');
         insert acct;
         Contact c1 = new Contact(FirstName = 'First', LastName = 'Notify', Email = 'first@example.com');
         Contact c2 = new Contact(FirstName = 'Second', LastName = 'Notify', Email = 'second@example.com');
@@ -529,6 +529,80 @@ private class ProgramEnrollmentNotify_Tests {
             WHERE Subject = 'Program Office email EXCEPTION'
         ];
         System.assertEquals(1, exceptionTasks.size(), 'Catch block should create exception task.');
+    }
+
+    @IsTest
+    static void test_NotifyProgramOffice_SkipsNonImplementationScienceProgram() {
+        Account adHocProgram = new Account(Name = 'Ad Hoc Clinical Research Course program');
+        insert adHocProgram;
+        Contact c = new Contact(FirstName = 'Adhoc', LastName = 'Tester', Email = 'adhoc@example.com');
+        insert c;
+        hed__Program_Enrollment__c pe = new hed__Program_Enrollment__c(
+            hed__Account__c = adHocProgram.Id,
+            hed__Contact__c = c.Id,
+            hed__Enrollment_Status__c = 'Payment Pending'
+        );
+        insert pe;
+
+        ProgramEnrollmentOfficeNotify.ProgramEnrollmentRequest req =
+            new ProgramEnrollmentOfficeNotify.ProgramEnrollmentRequest();
+        req.programEnrollmentId = pe.Id;
+
+        Test.startTest();
+        ProgramEnrollmentOfficeNotify.notifyProgramOffice(
+            new List<ProgramEnrollmentOfficeNotify.ProgramEnrollmentRequest>{ req }
+        );
+        Test.stopTest();
+
+        Integer notifyTasks = [
+            SELECT COUNT()
+            FROM Task
+            WHERE WhatId = :pe.Id
+              AND Subject = 'Program Office Notified: New Program Enrollment'
+        ];
+        System.assertEquals(0, notifyTasks, 'Non-Implementation Science programs should not trigger office notification.');
+    }
+
+    @IsTest
+    static void test_NotifyProgramOffice_SkipsAdHocClinicalResearchAccountIdEvenIfNameMatches() {
+        Account acct = new Account(Name = 'Implementation Science Ad Hoc account-id guard');
+        insert acct;
+        Contact c = new Contact(FirstName = 'Acct', LastName = 'IdExclude', Email = 'acctid.exclude@example.com');
+        insert c;
+        hed__Program_Enrollment__c pe = new hed__Program_Enrollment__c(
+            hed__Account__c = acct.Id,
+            hed__Contact__c = c.Id,
+            hed__Enrollment_Status__c = 'Payment Pending'
+        );
+        insert pe;
+
+        Id savedExclusionId = ProgramEnrollmentOfficeNotify.adHocClinicalResearchProgramAccountId;
+        ProgramEnrollmentOfficeNotify.adHocClinicalResearchProgramAccountId = acct.Id;
+        try {
+            ProgramEnrollmentOfficeNotify.ProgramEnrollmentRequest req =
+                new ProgramEnrollmentOfficeNotify.ProgramEnrollmentRequest();
+            req.programEnrollmentId = pe.Id;
+
+            Test.startTest();
+            ProgramEnrollmentOfficeNotify.notifyProgramOffice(
+                new List<ProgramEnrollmentOfficeNotify.ProgramEnrollmentRequest>{ req }
+            );
+            Test.stopTest();
+
+            Integer notifyTasks = [
+                SELECT COUNT()
+                FROM Task
+                WHERE WhatId = :pe.Id
+                  AND Subject = 'Program Office Notified: New Program Enrollment'
+            ];
+            System.assertEquals(
+                0,
+                notifyTasks,
+                'Ad Hoc Clinical Research Account Id exclusion should apply even if Account name contains Implementation Science.'
+            );
+        } finally {
+            ProgramEnrollmentOfficeNotify.adHocClinicalResearchProgramAccountId = savedExclusionId;
+        }
     }
 
     @IsTest

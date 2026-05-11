@@ -3,6 +3,13 @@ public with sharing class ProgramEnrollmentOfficeNotify {
     @TestVisible
     private static Boolean throwInTestForCoverage = false;
 
+    /**
+     * UCSF Ad Hoc Clinical Research program Account. Excluded from Implementation Science office alerts
+     * (defense in depth alongside the program-name check). Update per org if this Account Id differs in sandbox.
+     */
+    @TestVisible
+    private static Id adHocClinicalResearchProgramAccountId = Id.valueOf('001Dn00000dxeGCIAY');
+
     /** Same-transaction dedupe: do not send a second office notification for these PEs. */
     @TestVisible
     private static Set<Id> alreadyNotifiedPeIds = new Set<Id>();
@@ -14,7 +21,7 @@ public with sharing class ProgramEnrollmentOfficeNotify {
 
     @InvocableMethod(
         label='Notify Program Office of New Enrollment'
-        description='Sends a simple notification email to the Program Office when a new Program Enrollment is submitted.'
+        description='Sends a notification email to the Implementation Science program office when a new Program Enrollment is submitted for a program whose Account name contains Implementation Science (same rule as payment-received flows). Skips Ad Hoc Clinical Research (fixed Account Id) and non-matching programs.'
     )
     public static void notifyProgramOffice(List<ProgramEnrollmentRequest> requests) {
         if (requests == null || requests.isEmpty()) return;
@@ -93,6 +100,7 @@ public with sharing class ProgramEnrollmentOfficeNotify {
                        Name,
                        hed__Contact__c,
                        hed__Contact__r.Name,
+                       hed__Account__c,
                        hed__Account__r.Name,
                        hed__Enrollment_Status__c
                 FROM hed__Program_Enrollment__c
@@ -108,7 +116,7 @@ public with sharing class ProgramEnrollmentOfficeNotify {
 
         for (Id peId : finalPeIds) {
             hed__Program_Enrollment__c pe = peMap.get(peId);
-            if (pe == null) continue;
+            if (pe == null || isAdHocClinicalResearchProgram(pe) || !isImplementationScienceProgram(pe)) continue;
 
             peIdsForEmails.add(pe.Id);
 
@@ -230,6 +238,23 @@ public with sharing class ProgramEnrollmentOfficeNotify {
                 }
             }
         }
+    }
+
+    private static Boolean isAdHocClinicalResearchProgram(hed__Program_Enrollment__c pe) {
+        return pe != null
+            && adHocClinicalResearchProgramAccountId != null
+            && pe.hed__Account__c == adHocClinicalResearchProgramAccountId;
+    }
+
+    /**
+     * Aligns with org Flows that gate Implementation Science automation on Account (program) name
+     * containing "Implementation Science" (case-insensitive).
+     */
+    private static Boolean isImplementationScienceProgram(hed__Program_Enrollment__c pe) {
+        if (pe == null || pe.hed__Account__r == null || String.isBlank(pe.hed__Account__r.Name)) {
+            return false;
+        }
+        return pe.hed__Account__r.Name.toUpperCase().contains('IMPLEMENTATION SCIENCE');
     }
 }
 

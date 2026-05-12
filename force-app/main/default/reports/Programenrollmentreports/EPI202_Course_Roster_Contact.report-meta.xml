@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Report xmlns="http://soap.sforce.com/2006/04/metadata">
+    <columns>
+        <field>Contact.hed__Student_Course_Enrollments__r$Course_Name__c</field>
+    </columns>
+    <columns>
+        <field>Contact$Name</field>
+    </columns>
+    <columns>
+        <field>Contact.hed__Student_Course_Enrollments__r$Program_Enrolled__c</field>
+    </columns>
+    <columns>
+        <field>Contact.hed__Student_Course_Enrollments__r$Fee_Type__c</field>
+    </columns>
+    <columns>
+        <field>Contact.hed__Student_Course_Enrollments__r$Course_Fee__c</field>
+    </columns>
+    <description>One row per course connection (EPI202). Use for a course roster sorted/filtered by course name; add columns in the builder if you need Term Enrollment or Opportunity fields via lookup.</description>
+    <filter>
+        <criteriaItems>
+            <column>Contact.hed__Student_Course_Enrollments__r$Course_Name__c</column>
+            <columnToColumn>false</columnToColumn>
+            <isUnlocked>true</isUnlocked>
+            <operator>contains</operator>
+            <value>EPI202</value>
+        </criteriaItems>
+        <language>en_US</language>
+    </filter>
+    <format>Tabular</format>
+    <name>EPI202 Course Roster (Contact)</name>
+    <params>
+        <name>co</name>
+        <value>1</value>
+    </params>
+    <reportType>Contacts_with_Course_Connections__c</reportType>
+    <scope>organization</scope>
+    <showDetails>true</showDetails>
+    <showGrandTotal>true</showGrandTotal>
+    <showSubTotals>true</showSubTotals>
+    <sortColumn>Contact.hed__Student_Course_Enrollments__r$Course_Name__c</sortColumn>
+    <sortOrder>Asc</sortOrder>
+    <timeFrameFilter>
+        <dateColumn>Contact$CreatedDate</dateColumn>
+        <interval>INTERVAL_CUSTOM</interval>
+    </timeFrameFilter>
+</Report>

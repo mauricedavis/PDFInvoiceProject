@@ -8,15 +8,26 @@ public without sharing class ProgramEnrollmentStudentEmailQueueable implements Q
 
     private final List<Id> peIds;
     private final Integer retry;
+    private final Boolean forceResend;
 
     public ProgramEnrollmentStudentEmailQueueable(List<Id> peIds) {
-        this(peIds, 0);
+        this(peIds, 0, false);
+    }
+
+    public ProgramEnrollmentStudentEmailQueueable(List<Id> peIds, Boolean forceResend) {
+        this(peIds, 0, forceResend == true);
     }
 
     @TestVisible
     private ProgramEnrollmentStudentEmailQueueable(List<Id> peIds, Integer retry) {
+        this(peIds, retry, false);
+    }
+
+    @TestVisible
+    private ProgramEnrollmentStudentEmailQueueable(List<Id> peIds, Integer retry, Boolean forceResend) {
         this.peIds = (peIds == null) ? new List<Id>() : new List<Id>(peIds);
         this.retry = retry;
+        this.forceResend = forceResend == true;
     }
 
     public void execute(QueueableContext context) {
@@ -24,7 +35,10 @@ public without sharing class ProgramEnrollmentStudentEmailQueueable implements Q
 
         Map<Id, hed__Program_Enrollment__c> peById = new Map<Id, hed__Program_Enrollment__c>(
             [
-                SELECT Id, hed__Enrollment_Status__c
+                SELECT Id,
+                       hed__Enrollment_Status__c,
+                       hed__Account__c,
+                       hed__Account__r.Name
                 FROM hed__Program_Enrollment__c
                 WHERE Id IN :peIds
             ]
@@ -46,35 +60,45 @@ public without sharing class ProgramEnrollmentStudentEmailQueueable implements Q
         // FormAssembly may attach the responses PDF after invoice batch; allow many queueable hops.
         Integer maxRetries = 40;
 
-        // Determine readiness: invoice PDF on PE and responses PDF on Contact and/or non-invoice PDF on PE.
-        // In tests, we still evaluate readiness for coverage/behavior, but we never chain a new async job.
         Boolean allReady = true;
         for (Id peId : workPeIds) {
-            if (!ProgramEnrollmentStudentEmail.hasInvoicePdf(peId)) {
+            if (!ProgramEnrollmentStudentEmail.isStudentConfirmationAttachmentsReady(peId)) {
                 allReady = false;
                 break;
             }
 
-            Id contactId = ProgramEnrollmentStudentEmail.getContactId(peId);
-            // Responses may exist only on the PE (FormAssembly); do not require Contact for readiness.
-            if (!ProgramEnrollmentStudentEmail.hasResponsesSourceForStudentEmail(peId, contactId)) {
+            hed__Program_Enrollment__c peRow = peById.get(peId);
+            String acctNm =
+                peRow != null && peRow.hed__Account__r != null
+                    ? peRow.hed__Account__r.Name
+                    : null;
+            Id confirmationTemplateId =
+                peRow != null
+                    ? ProgramEnrollmentEmailTemplateConfig.resolveStudentConfirmationTemplateId(
+                          peRow.hed__Account__c,
+                          acctNm
+                      )
+                    : null;
+            if (confirmationTemplateId != null
+                && ProgramEnrollmentEmailTemplateConfig.isAdHocClinicalResearchProgram(
+                    peRow.hed__Account__c,
+                    acctNm
+                )
+                && !ProgramEnrollmentStudentEmail.isConfirmationTermReady(peId)) {
                 allReady = false;
                 break;
             }
         }
 
         if (!allReady) {
-            // Not ready: retry up to maxRetries, then stop (do NOT attempt to send or publish files).
             if (!Test.isRunningTest() && retry < maxRetries) {
-                System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(workPeIds, retry + 1));
+                System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(workPeIds, retry + 1, forceResend));
             } else if (!Test.isRunningTest() && retry >= maxRetries) {
                 ProgramEnrollmentStudentEmail.logReadinessTimeoutTasks(workPeIds);
             }
             return;
         }
 
-        // Ready: send the email(s).
-        ProgramEnrollmentStudentEmail.sendStudentEmailInternal(workPeIds);
+        ProgramEnrollmentStudentEmail.sendStudentEmailInternal(workPeIds, forceResend);
     }
 }
-

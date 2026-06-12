@@ -89,7 +89,9 @@
             <label>Yes, needs invoice attached</label>
         </rules>
     </decisions>
-    <description>04.07.2026 - v21 - Entry: exclude PE when hed__Enrollment_Status__c is &quot;Currently Enrolled&quot; so &quot;Payment Processing: Marking Students as Paid&quot; (Opportunity Full Payment Received) does not re-fire this flow and resend registration/invoice PDF email via PEInvoiceActionOne.
+    <description>06.08.2026 - v23 - Stop stamping Last_Invoice_ContentVersion_Id__c from latest PE file (was capturing responses PDF). Student confirmation chains from invoice batch after attachable invoice exists.
+05.15.2026 - v22 - Removed start filter hed__Account__c NotEqualTo Ad Hoc Clinical Research (001Dn00000dxeGCIAY) so enrollee invoice/confirmation automation runs for Ad Hoc Clinical Research Course program PEs (v18 had added IS-only restriction).
+04.07.2026 - v21 - Entry: exclude PE when hed__Enrollment_Status__c is &quot;Currently Enrolled&quot; so &quot;Payment Processing: Marking Students as Paid&quot; (Opportunity Full Payment Received) does not re-fire this flow and resend registration/invoice PDF email via PEInvoiceActionOne.
 03.27.2026 - v20 - Invoice branch: lookup ContentDocumentLink by $Record.Id (after Copy FA); allow no rows + branch to PEInvoiceActionOne so flow does not fault when sfProgramEnrollmentId__c is blank or files are only on PE. v19 NPE fix is in Apex (programOfficeOweaLookupDone = false).
 03.24.2026 - v19 - Student confirmation: removed Flow emailSimple (same-txn send deduped Apex and often attached only one PDF). PEInvoiceActionOne uses $Record.Id; PEInvoiceActionOne + queueable send both PDFs via ProgramEnrollmentStudentEmail. Deploying this file creates a new Salesforce flow version; prior versions (e.g. v18) remain in Setup → Flows → Version History. Frozen v18 XML for diff/rollback reference: flow-snapshots/Program_Enrollment_Notification_to_Enrollee_v18.flow-meta.xml.
 03.26.2026 - v18 (PROD) - Added filter to only trigger when the program is for &apos;Implementation Science&apos;
@@ -188,39 +190,17 @@
         <inputReference>$Record</inputReference>
     </recordUpdates>
     <recordUpdates>
-        <name>Update_Program_Enrollment_audit_field</name>
-        <label>Update Program Enrollment &apos;audit&apos; field</label>
+        <name>Update_Program_Enrollment_w_Attachment</name>
+        <label>Update Program Enrollment w/Attachment</label>
         <locationX>0</locationX>
         <locationY>0</locationY>
         <connector>
             <targetReference>Send_email_notification_to_student_and_attached_PDF_s</targetReference>
         </connector>
         <inputAssignments>
-            <field>Last_Invoice_ContentVersion_Id__c</field>
-            <value>
-                <elementReference>Get_ContentVersion.Id</elementReference>
-            </value>
-        </inputAssignments>
-        <inputReference>$Record</inputReference>
-    </recordUpdates>
-    <recordUpdates>
-        <name>Update_Program_Enrollment_w_Attachment</name>
-        <label>Update Program Enrollment w/Attachment</label>
-        <locationX>0</locationX>
-        <locationY>0</locationY>
-        <connector>
-            <targetReference>Update_Program_Enrollment_audit_field</targetReference>
-        </connector>
-        <inputAssignments>
             <field>Invoice_created__c</field>
             <value>
                 <booleanValue>true</booleanValue>
-            </value>
-        </inputAssignments>
-        <inputAssignments>
-            <field>Last_Invoice_ContentVersion_Id__c</field>
-            <value>
-                <elementReference>Get_ContentVersion.Id</elementReference>
             </value>
         </inputAssignments>
         <inputReference>$Record</inputReference>
@@ -235,13 +215,6 @@
             <operator>EqualTo</operator>
             <value>
                 <booleanValue>false</booleanValue>
-            </value>
-        </filters>
-        <filters>
-            <field>hed__Account__c</field>
-            <operator>NotEqualTo</operator>
-            <value>
-                <stringValue>001Dn00000dxeGCIAY</stringValue>
             </value>
         </filters>
         <filters>

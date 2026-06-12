@@ -11,15 +11,12 @@ public with sharing class PEInvoiceActionOne {
         for (Req r : reqs) {
             if (r == null || r.ProgramEnrollmentId == null) continue;
 
-            // Always enqueue student confirmation even if generateAttachAndEmail throws (e.g. lock/contention).
-            try {
-                ProgramEnrollmentInvoiceController.generateAttachAndEmail(
-                    r.ProgramEnrollmentId,
-                    r.CcAddresses
-                );
-            } finally {
-                ProgramEnrollmentInvoiceController.enqueueStudentConfirmationAfterInvoice(r.ProgramEnrollmentId);
-            }
+            // Student confirmation is chained from ProgramEnrollmentInvoiceBatch.finish (or invoice queueable
+            // when invoice already exists) after the invoice PDF is attachable — not here.
+            ProgramEnrollmentInvoiceController.generateAttachAndEmail(
+                r.ProgramEnrollmentId,
+                r.CcAddresses
+            );
 
             outIds.add(r.ProgramEnrollmentId);
         }

@@ -80,13 +80,13 @@ public without sharing class ProgramEnrollmentInvoiceQueueable implements Queuea
         // Retry if not ready and retry limit not hit.
         // In tests, we avoid enqueuing a new async job to prevent
         // deep recursion / maximum stack depth issues.
-        if (!allReady && retry < maxRetries) {
+        if (!allReady) {
             System.debug('Not ready. ' +
                          (Test.isRunningTest()
                              ? 'Skipping re-queue in test context.'
                              : 'Re-queueing for retry #' + (retry + 1)));
 
-            if (!Test.isRunningTest()) {
+            if (!Test.isRunningTest() && retry < maxRetries) {
                 System.enqueueJob(new ProgramEnrollmentInvoiceQueueable(peIds, retry + 1));
             }
             return;
@@ -110,8 +110,16 @@ public without sharing class ProgramEnrollmentInvoiceQueueable implements Queuea
                 Database.executeBatch(new ProgramEnrollmentInvoiceBatch(toGenerate, peIds), 1);
             }
         } else if (!Test.isRunningTest() && !peIds.isEmpty()) {
-            // Every PE already had an invoice PDF — no batch. Chain student email directly.
-            System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(peIds));
+            Boolean allHaveAttachableInvoice = true;
+            for (Id peId : peIds) {
+                if (!ProgramEnrollmentStudentEmail.isInvoiceAttachmentReady(peId)) {
+                    allHaveAttachableInvoice = false;
+                    break;
+                }
+            }
+            if (allHaveAttachableInvoice) {
+                System.enqueueJob(new ProgramEnrollmentStudentEmailQueueable(peIds));
+            }
         }
 
         System.debug('=== ProgramEnrollmentInvoiceQueueable COMPLETE ===');

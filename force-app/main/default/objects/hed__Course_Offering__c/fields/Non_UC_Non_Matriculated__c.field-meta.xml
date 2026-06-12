@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Non_UC_Non_Matriculated__c</fullName>
+    <description>Non-UC, Non-Matriculated Costs</description>
+    <inlineHelpText>Non-UC, Non-Matriculated Costs</inlineHelpText>
+    <label>Non-UC, Non-Matriculated</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackTrending>false</trackTrending>
+    <type>Currency</type>
+</CustomField>

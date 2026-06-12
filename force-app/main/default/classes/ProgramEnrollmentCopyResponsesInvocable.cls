@@ -11,7 +11,7 @@ public without sharing class ProgramEnrollmentCopyResponsesInvocable {
 
     @InvocableMethod(
         label='Copy FA responses PDF from Contact to Program Enrollment'
-        description='Creates Course Registration Responses on the PE from the latest PDF on the Contact (or non-invoice PDF on the PE). Does not send email.'
+        description='Links the latest FA responses PDF from the Contact to the Program Enrollment when needed. Does not send email.'
     )
     public static void copyResponsesPdfToProgramEnrollment(List<ProgramEnrollmentRequest> requests) {
         if (requests == null || requests.isEmpty()) {

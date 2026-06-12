@@ -177,11 +177,44 @@
         </rules>
     </decisions>
     <decisions>
+        <description>All programs: copy Term Enrollment term name onto parent PE for confirmation email templates.</description>
+        <name>Stamp_Deb_Confirmation_Term</name>
+        <label>Stamp confirmation term on PE?</label>
+        <locationX>1089</locationX>
+        <locationY>1296</locationY>
+        <defaultConnectorLabel>Skip stamp</defaultConnectorLabel>
+        <rules>
+            <name>Yes_stamp_confirmation_term</name>
+            <conditionLogic>and</conditionLogic>
+            <conditions>
+                <leftValueReference>$Record.Term__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <conditions>
+                <leftValueReference>$Record.Program_Enrollment__c</leftValueReference>
+                <operator>IsNull</operator>
+                <rightValue>
+                    <booleanValue>false</booleanValue>
+                </rightValue>
+            </conditions>
+            <connector>
+                <targetReference>Update_PE_Deb_Confirmation_Term</targetReference>
+            </connector>
+            <label>Yes, TE has term</label>
+        </rules>
+    </decisions>
+    <decisions>
         <description>Runs after payment logic (or non-payment branches). Updating TE Name here avoids a nested after-save interview before payment Opp lookups can see form-created rows.</description>
         <name>Name_sync_after_payment</name>
         <label>Name sync after payment path</label>
         <locationX>1089</locationX>
         <locationY>1200</locationY>
+        <defaultConnector>
+            <targetReference>Stamp_Deb_Confirmation_Term</targetReference>
+        </defaultConnector>
         <defaultConnectorLabel>Already matches formula</defaultConnectorLabel>
         <rules>
             <name>Sync_TE_Name_after_payment</name>
@@ -239,7 +272,10 @@
             <label>Not Enrolled</label>
         </rules>
     </decisions>
-    <description>04/23/2026 &lt;MJD&gt; v42: Canonical = FA-linked Term Payment Opp (FA_Response_URL__c not null) when present, else newest Payment Due + Term_Payment RT; deletes other matching Opps; updates canonical. Prevents automation-created newest row from winning over FormAssembly row.
+    <description>05/28/2026 &lt;MJD&gt; v45: Stamp Deb_Confirmation_Term__c from Term__r.Name for all TE rows with a term (IS + Ad Hoc confirmation templates use this text field; Enrollment_Term__r merge is invalid in Lightning templates).
+05/28/2026 &lt;MJD&gt; v44: Stamp Program Enrollment Deb_Confirmation_Term__c from Term__r.Name for UC/Non-UC Ad Hoc TE rows (DEB confirmation email merge field).
+04/28/2026 &lt;MJD&gt; v43: AsyncAfterCommit + trigger OR (Status__c|Total_Fees__c|Remaining_Balance__c IsChanged)—Salesforce forbids doesRequireRecordChangedToMeetCriteria together with IsChanged in the same trigger. Reduces UNABLE_TO_LOCK_ROW vs sync after-save.
+04/23/2026 &lt;MJD&gt; v42: Canonical = FA-linked Term Payment Opp (FA_Response_URL__c not null) when present, else newest Payment Due + Term_Payment RT; deletes other matching Opps; updates canonical. Prevents automation-created newest row from winning over FormAssembly row.
 04/23/2026 &lt;MJD&gt; v41: Newest-only canonical; superseded by v42 when FA row must win over automation Opp.
 04/23/2026 &lt;MJD&gt; v40: FA-only matching; superseded by v41/v42.
 04/23/2026 &lt;MJD&gt; v39: No new Opp inserts from this flow; FormAssembly owns create.
@@ -621,16 +657,66 @@
                 <elementReference>TermEnrollmentName</elementReference>
             </value>
         </inputAssignments>
+        <connector>
+            <targetReference>Stamp_Deb_Confirmation_Term</targetReference>
+        </connector>
         <inputReference>$Record</inputReference>
+    </recordUpdates>
+    <recordUpdates>
+        <description>Feeds DEB_Course_Enrollment_Confirmed email merge field Deb_Confirmation_Term__c.</description>
+        <name>Update_PE_Deb_Confirmation_Term</name>
+        <label>Update PE DEB Confirmation Term</label>
+        <locationX>1089</locationX>
+        <locationY>1404</locationY>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Id</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Record.Program_Enrollment__c</elementReference>
+            </value>
+        </filters>
+        <inputAssignments>
+            <field>Deb_Confirmation_Term__c</field>
+            <value>
+                <elementReference>$Record.Term__r.Name</elementReference>
+            </value>
+        </inputAssignments>
+        <object>hed__Program_Enrollment__c</object>
     </recordUpdates>
     <start>
         <locationX>963</locationX>
         <locationY>0</locationY>
-        <connector>
-            <targetReference>Term_Enrollment_Status</targetReference>
-        </connector>
+        <filterLogic>or</filterLogic>
+        <filters>
+            <field>Status__c</field>
+            <operator>IsChanged</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <filters>
+            <field>Total_Fees__c</field>
+            <operator>IsChanged</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
+        <filters>
+            <field>Remaining_Balance__c</field>
+            <operator>IsChanged</operator>
+            <value>
+                <booleanValue>true</booleanValue>
+            </value>
+        </filters>
         <object>Term_Enrollment__c</object>
         <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <scheduledPaths>
+            <connector>
+                <targetReference>Term_Enrollment_Status</targetReference>
+            </connector>
+            <pathType>AsyncAfterCommit</pathType>
+        </scheduledPaths>
         <triggerType>RecordAfterSave</triggerType>
     </start>
     <status>Active</status>

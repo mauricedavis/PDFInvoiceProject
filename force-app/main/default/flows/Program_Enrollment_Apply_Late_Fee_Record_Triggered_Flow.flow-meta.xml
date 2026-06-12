@@ -48,7 +48,9 @@
             <label>Found</label>
         </rules>
     </decisions>
-    <description>Runs when a Program Enrollment is created or when Suppress Automated Late Fee changes. Entry formula avoids re-running when only Enrollment Late Fee is updated by this flow. If Suppress is true, sets Enrollment Late Fee to $0 and skips TE/deadline logic; otherwise evaluates Term Enrollments for the designated term and applies the standard late fee when the enrollment deadline has passed.</description>
+    <description>04/30/2026 &lt;MJD&gt; v3: Converted main path to a 1-minute time-based scheduled path so late-fee logic runs asynchronously after commit, eliminating the PE row-lock contention that was causing FormAssembly UNABLE_TO_LOCK_ROW on CreateTerm_Enrollment__c. Salesforce forbids AsyncAfterCommit combined with ISNEW()/ISCHANGED in filterFormula, and forbids doesRequireRecordChangedToMeetCriteria alongside IsChanged, so we switched to a simple operator filter (Enrollment_Term__c IsNull=false) plus doesRequireRecordChangedToMeetCriteria=true (same pattern as Program_Enrollment_Student_Confirmation_Delayed_Safety). Trade-off vs v1: this version fires on create+update when the record newly meets the filter, rather than on every Suppress_Automated_Late_Fee__c toggle; toggling Suppress alone without Enrollment_Term__c transitioning null-to-set will not re-trigger.
+
+Original: Runs when a Program Enrollment is created or when Suppress Automated Late Fee changes. Entry formula avoids re-running when only Enrollment Late Fee is updated by this flow. If Suppress is true, sets Enrollment Late Fee to $0 and skips TE/deadline logic; otherwise evaluates Term Enrollments for the designated term and applies the standard late fee when the enrollment deadline has passed.</description>
     <environments>Default</environments>
     <interviewLabel>Program Enrollment - Apply Late Fee - Record Triggered Flow {!$Flow.CurrentDateTime}</interviewLabel>
     <label>Program Enrollment - Apply Late Fee - Record Triggered Flow</label>
@@ -128,12 +130,28 @@
     <start>
         <locationX>0</locationX>
         <locationY>0</locationY>
-        <connector>
-            <targetReference>Check_Suppress_Automated_Late_Fee</targetReference>
-        </connector>
-        <filterFormula>OR(ISNEW(), ISCHANGED({!$Record.Suppress_Automated_Late_Fee__c}))</filterFormula>
+        <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Enrollment_Term__c</field>
+            <operator>IsNull</operator>
+            <value>
+                <booleanValue>false</booleanValue>
+            </value>
+        </filters>
         <object>hed__Program_Enrollment__c</object>
         <recordTriggerType>CreateAndUpdate</recordTriggerType>
+        <scheduledPaths>
+            <name>X1_Minute_After</name>
+            <connector>
+                <targetReference>Check_Suppress_Automated_Late_Fee</targetReference>
+            </connector>
+            <label>1 Minute After Save</label>
+            <maxBatchSize>200</maxBatchSize>
+            <offsetNumber>1</offsetNumber>
+            <offsetUnit>Minutes</offsetUnit>
+            <timeSource>RecordTriggerEvent</timeSource>
+        </scheduledPaths>
         <triggerType>RecordAfterSave</triggerType>
     </start>
     <status>Active</status>

@@ -143,7 +143,7 @@ public with sharing class ProgramEnrollmentNotificationActions {
     // ===== 1) Enrollee confirmation (template-based, with safe fallback) =====
     @InvocableMethod(
         label='Send Program Enrollment Confirmation Email'
-        description='Sends a confirmation email to the Program Enrollment contact using the ucsf-prod template (DeveloperName from ProgramEnrollmentEmailTemplateConfig) when active; otherwise inline body.'
+        description='Sends a confirmation email to the Program Enrollment contact using Lightning EmailTemplates from ProgramEnrollmentEmailTemplateConfig when active (Ad Hoc DEB template vs Implementation Science variants); otherwise inline body.'
     )
     public static void sendEnrollmentConfirmation(List<ProgramEnrollmentRequest> requests) {
         if (requests == null || requests.isEmpty()) return;
@@ -161,6 +161,7 @@ public with sharing class ProgramEnrollmentNotificationActions {
             [
                 SELECT Id,
                        Name,
+                       hed__Account__c,
                        hed__Contact__c,
                        hed__Contact__r.Name,
                        hed__Contact__r.Email,
@@ -172,7 +173,6 @@ public with sharing class ProgramEnrollmentNotificationActions {
 
         if (peMap.isEmpty()) return;
 
-        Id templateId = ProgramEnrollmentEmailTemplateConfig.getActiveStudentConfirmationTemplateId();
 
         List<Messaging.SingleEmailMessage> emails = new List<Messaging.SingleEmailMessage>();
         List<Id> peIdsForEmails = new List<Id>();
@@ -187,6 +187,12 @@ public with sharing class ProgramEnrollmentNotificationActions {
                 String.isBlank(pe.hed__Contact__r.Email)) {
                 continue;
             }
+
+            String acctNm = pe.hed__Account__r != null ? pe.hed__Account__r.Name : null;
+            Id templateId = ProgramEnrollmentEmailTemplateConfig.resolveStudentConfirmationTemplateId(
+                pe.hed__Account__c,
+                acctNm
+            );
 
             // Pull latest responses PDF from Contact and link it to the Program Enrollment for audit trail.
             ResponseDoc responseDoc = getLatestResponsesPdfFromContact(pe.hed__Contact__c);

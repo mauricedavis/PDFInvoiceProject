@@ -1,5 +1,5 @@
 /**
- * Sends the Implementation Science "payment received" confirmation as real HTML email.
+ * Sends the Implementation Science and Ad Hoc Clinical Research "payment received" confirmation as real HTML email.
  * Flow's emailSimple action does not support richTextEmailBody in all orgs/API mixes; Apex setHtmlBody is reliable.
  *
  * Enrollment wording uses the student's Course Connection row: Course Offering name when available, else
@@ -9,6 +9,13 @@ public without sharing class PaymentReceivedEmailInvocable {
 
     private static final String PROGRAM_OFFICE_FROM_EMAIL = 'implementationscience@ucsf.edu';
     private static final String SUBJECT = 'Thank you \u2014 we received your payment';
+
+    /**
+     * UCSF Ad Hoc Clinical Research program Account (prod); align with ProgramEnrollmentOfficeNotify.
+     * Sandboxes may use a different Id — name match AD HOC CLINICAL RESEARCH is also accepted.
+     */
+    @TestVisible
+    private static Id adHocClinicalResearchProgramAccountId = Id.valueOf('001Dn00000dxeGCIAY');
 
     private static Id cachedProgramOfficeOweaId;
     private static Boolean programOfficeOweaLookupDone = false;
@@ -31,7 +38,7 @@ public without sharing class PaymentReceivedEmailInvocable {
 
     @InvocableMethod(
         label='Send payment received confirmation (HTML)'
-        description='Sends HTML payment confirmation from the Program Office OWEA when the program Account name contains IMPLEMENTATION SCIENCE and the student has an email.'
+        description='Sends HTML payment confirmation from the Program Office OWEA when the program is Implementation Science (name), Ad Hoc Clinical Research (name or known Account Id), and the student has an email.'
     )
     public static void sendPaymentConfirmation(List<Request> requests) {
         lastBuiltEmailCountForTest = 0;
@@ -55,6 +62,7 @@ public without sharing class PaymentReceivedEmailInvocable {
             [
                 SELECT
                     Id,
+                    hed__Account__c,
                     hed__Contact__c,
                     hed__Contact__r.FirstName,
                     hed__Contact__r.Email,
@@ -77,12 +85,13 @@ public without sharing class PaymentReceivedEmailInvocable {
             if (pe == null || pe.hed__Contact__c == null || String.isBlank(pe.hed__Contact__r.Email)) {
                 continue;
             }
+            if (!isPaymentConfirmationEligibleProgram(pe)) {
+                continue;
+            }
+
             String acctName = (pe.hed__Account__r != null && pe.hed__Account__r.Name != null)
                 ? pe.hed__Account__r.Name
                 : '';
-            if (!acctName.toUpperCase().contains('IMPLEMENTATION SCIENCE')) {
-                continue;
-            }
 
             String firstName = String.isNotBlank(pe.hed__Contact__r.FirstName)
                 ? pe.hed__Contact__r.FirstName
@@ -99,7 +108,9 @@ public without sharing class PaymentReceivedEmailInvocable {
             msg.setTreatTargetObjectAsRecipient(true);
             msg.setSaveAsActivity(true);
             msg.setSubject(SUBJECT);
-            String html = buildHtmlBody(htmlEsc(firstName), htmlEsc(enrolledLabel));
+            String html = isAdHocClinicalResearchStyleProgram(pe)
+                ? buildHtmlBodyAdHocClinicalResearch(htmlEsc(firstName), htmlEsc(enrolledLabel))
+                : buildHtmlBody(htmlEsc(firstName), htmlEsc(enrolledLabel));
             msg.setHtmlBody(html);
             if (Test.isRunningTest()) {
                 lastHtmlBodyForTest = html;
@@ -313,6 +324,38 @@ public without sharing class PaymentReceivedEmailInvocable {
         return cachedProgramOfficeOweaId;
     }
 
+    /**
+     * Implementation Science–branded programs (existing behavior) plus Ad Hoc Clinical Research (name or Account Id).
+     */
+    @TestVisible
+    private static Boolean isPaymentConfirmationEligibleProgram(hed__Program_Enrollment__c pe) {
+        if (pe == null) {
+            return false;
+        }
+        if (adHocClinicalResearchProgramAccountId != null && pe.hed__Account__c == adHocClinicalResearchProgramAccountId) {
+            return true;
+        }
+        String acctName = (pe.hed__Account__r != null && pe.hed__Account__r.Name != null)
+            ? pe.hed__Account__r.Name
+            : '';
+        String u = acctName.toUpperCase();
+        return u.contains('IMPLEMENTATION SCIENCE') || u.contains('AD HOC CLINICAL RESEARCH');
+    }
+
+    @TestVisible
+    private static Boolean isAdHocClinicalResearchStyleProgram(hed__Program_Enrollment__c pe) {
+        if (pe == null) {
+            return false;
+        }
+        if (adHocClinicalResearchProgramAccountId != null && pe.hed__Account__c == adHocClinicalResearchProgramAccountId) {
+            return true;
+        }
+        String acctName = (pe.hed__Account__r != null && pe.hed__Account__r.Name != null)
+            ? pe.hed__Account__r.Name
+            : '';
+        return acctName.toUpperCase().contains('AD HOC CLINICAL RESEARCH');
+    }
+
     private static String htmlEsc(String s) {
         if (s == null) {
             return '';
@@ -335,6 +378,21 @@ public without sharing class PaymentReceivedEmailInvocable {
             + '<p style="margin: 0 0 12px 0;">If you wish to change this enrollment, please reach out to us as soon as possible at <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.</p>'
             + '<p style="margin: 0 0 12px 0;">Thank you. We look forward to working with you.</p>'
             + '<p style="margin: 16px 0 0 0; color: #555555;">&mdash; The UCSF Implementation Science Team</p>'
+            + '</div>';
+    }
+
+    /** Ad Hoc Clinical Research: same payment-thanks structure without Implementation Science program page/footer. */
+    private static String buildHtmlBodyAdHocClinicalResearch(String firstNameEscaped, String enrolledInEscaped) {
+        return '<div style="font-family: Segoe UI, Arial, sans-serif; font-size: 14px; color: #333333; line-height: 1.5; max-width: 560px;">'
+            + '<p style="margin: 0 0 12px 0;">Hello '
+            + firstNameEscaped
+            + ',</p>'
+            + '<p style="margin: 0 0 12px 0;">Thank you, we received your payment. You are enrolled in <strong>'
+            + enrolledInEscaped
+            + '</strong>.</p>'
+            + '<p style="margin: 0 0 12px 0;">If you wish to change this enrollment or have questions, please reach out as soon as possible at <a href="mailto:ImplementationScience@ucsf.edu">ImplementationScience@ucsf.edu</a>.</p>'
+            + '<p style="margin: 0 0 12px 0;">Thank you. We look forward to working with you.</p>'
+            + '<p style="margin: 16px 0 0 0; color: #555555;">&mdash; UCSF Program Office</p>'
             + '</div>';
     }
 }

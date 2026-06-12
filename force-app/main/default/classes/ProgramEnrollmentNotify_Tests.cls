@@ -19,6 +19,24 @@ private class ProgramEnrollmentNotify_Tests {
             hed__Enrollment_Status__c = 'Payment Pending'
         );
         insert pe;
+
+        hed__Term__c term = new hed__Term__c(
+            Name = 'Test Term 2026',
+            hed__Account__c = acct.Id
+        );
+        insert term;
+        Term_Enrollment__c te = new Term_Enrollment__c(
+            Program_Enrollment__c = pe.Id,
+            Term__c = term.Id
+        );
+        insert te;
+        insert new hed__Course_Enrollment__c(
+            Term_Enrollment__c = te.Id
+        );
+        update new hed__Program_Enrollment__c(
+            Id = pe.Id,
+            Deb_Confirmation_Term__c = 'Test Term 2026'
+        );
     }
 
     @IsTest
@@ -155,6 +173,7 @@ private class ProgramEnrollmentNotify_Tests {
             FROM hed__Program_Enrollment__c
             LIMIT 1
         ];
+        ProgramEnrollmentInvoiceController.deleteGeneratedInvoiceContentDocuments(pe.Id);
         System.assertEquals(pe.hed__Contact__c, ProgramEnrollmentStudentEmail.getContactId(pe.Id), 'getContactId should return Contact.');
         System.assertEquals(null, ProgramEnrollmentStudentEmail.getContactId(null), 'getContactId(null) should return null.');
         System.assert(!ProgramEnrollmentStudentEmail.hasInvoicePdf(pe.Id), 'No invoice yet.');

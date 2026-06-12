@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Fee_Type__c</fullName>
+    <description>Learner fee type</description>
+    <inlineHelpText>Learner fee type: assists in calculating Course Connection fees, payments owed, and Course Offering revenue totals.</inlineHelpText>
+    <label>Fee Type</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>true</sorted>
+            <value>
+                <fullName>LMIC</fullName>
+                <default>false</default>
+                <label>LMIC</label>
+            </value>
+            <value>
+                <fullName>Matriculated</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Matriculated</label>
+            </value>
+            <value>
+                <fullName>MOU</fullName>
+                <default>false</default>
+                <label>MOU</label>
+            </value>
+            <value>
+                <fullName>Non-UC</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Non-UC</label>
+            </value>
+            <value>
+                <fullName>Non-UC, Non-Matriculated</fullName>
+                <default>false</default>
+                <label>Non-UC, Non-Matriculated</label>
+            </value>
+            <value>
+                <fullName>Non-UC Ad Hoc</fullName>
+                <default>false</default>
+                <label>Non-UC Ad Hoc</label>
+            </value>
+            <value>
+                <fullName>Non-UC Grad Student</fullName>
+                <default>false</default>
+                <label>Non-UC Grad Student</label>
+            </value>
+            <value>
+                <fullName>Non-UC Matriculated</fullName>
+                <default>false</default>
+                <label>Non-UC Matriculated</label>
+            </value>
+            <value>
+                <fullName>Non-UC Post-Doc</fullName>
+                <default>false</default>
+                <label>Non-UC Post-Doc</label>
+            </value>
+            <value>
+                <fullName>UC</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>UC</label>
+            </value>
+            <value>
+                <fullName>UC Ad Hoc</fullName>
+                <default>false</default>
+                <label>UC Ad Hoc</label>
+            </value>
+            <value>
+                <fullName>UC Grad Student</fullName>
+                <default>false</default>
+                <label>UC Grad Student</label>
+            </value>
+            <value>
+                <fullName>UC Matriculated</fullName>
+                <default>false</default>
+                <label>UC Matriculated</label>
+            </value>
+            <value>
+                <fullName>UC Post-Doc</fullName>
+                <default>false</default>
+                <label>UC Post-Doc</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

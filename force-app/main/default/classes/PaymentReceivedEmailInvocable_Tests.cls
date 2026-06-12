@@ -49,6 +49,51 @@ private class PaymentReceivedEmailInvocable_Tests {
     }
 
     @IsTest
+    static void sendsWhenAdHocClinicalResearchProgramByName() {
+        Account acct = new Account(Name = 'Ad Hoc Clinical Research Course program');
+        insert acct;
+
+        Contact c = new Contact(FirstName = 'Pat', LastName = 'AdHoc', Email = 'pat.adhoc@example.com');
+        insert c;
+
+        hed__Program_Enrollment__c pe = new hed__Program_Enrollment__c(
+            hed__Account__c = acct.Id,
+            hed__Contact__c = c.Id,
+            hed__Enrollment_Status__c = 'Payment Pending'
+        );
+        insert pe;
+
+        Opportunity opp = new Opportunity(
+            Name = 'Ad Hoc term payment',
+            StageName = 'Prospecting',
+            CloseDate = Date.today().addDays(30),
+            AccountId = acct.Id
+        );
+        insert opp;
+
+        PaymentReceivedEmailInvocable.Request req = new PaymentReceivedEmailInvocable.Request();
+        req.opportunityId = opp.Id;
+        req.programEnrollmentId = pe.Id;
+
+        Test.startTest();
+        PaymentReceivedEmailInvocable.sendPaymentConfirmation(
+            new List<PaymentReceivedEmailInvocable.Request>{ req }
+        );
+        Test.stopTest();
+
+        System.assertEquals(
+            1,
+            PaymentReceivedEmailInvocable.lastBuiltEmailCountForTest,
+            'Expected payment confirmation for Ad Hoc Clinical Research by Account name.'
+        );
+        System.assert(
+            PaymentReceivedEmailInvocable.lastHtmlBodyForTest != null &&
+                PaymentReceivedEmailInvocable.lastHtmlBodyForTest.contains('UCSF Program Office'),
+            'Ad Hoc path should use the non-Implementation-Science HTML variant.'
+        );
+    }
+
+    @IsTest
     static void sendResolvesCourseConnectionFromDatabase() {
         Account acct = new Account(Name = 'Online Certificate in Implementation Science');
         insert acct;
@@ -309,7 +354,7 @@ private class PaymentReceivedEmailInvocable_Tests {
         System.assertEquals(
             emailsBefore,
             Limits.getEmailInvocations(),
-            'Expected no email when Account name does not contain IMPLEMENTATION SCIENCE.'
+            'Expected no email when program is not Implementation Science or Ad Hoc Clinical Research.'
         );
     }
 

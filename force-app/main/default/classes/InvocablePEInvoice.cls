@@ -12,7 +12,6 @@ public with sharing class InvocablePEInvoice {
             ProgramEnrollmentInvoiceController.generateAttachAndEmail(
                 r.programEnrollmentId, r.toAddresses
             );
-            ProgramEnrollmentInvoiceController.enqueueStudentConfirmationAfterInvoice(r.programEnrollmentId);
             Response resp = new Response();
             resp.contentVersionId = null; // Controller does not return ContentVersion Id
             outList.add(resp);

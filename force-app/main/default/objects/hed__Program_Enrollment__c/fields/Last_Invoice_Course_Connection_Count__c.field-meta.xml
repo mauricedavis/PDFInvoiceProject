@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Last_Invoice_Course_Connection_Count__c</fullName>
+    <description>Number of Course Connections included when the latest Invoice_* PDF was generated. Used to detect partial invoices when additional courses commit after the first PDF.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Set automatically when an invoice PDF is created. If the live Course Connection count is higher, automation treats the invoice as stale and regenerates.</inlineHelpText>
+    <label>Last Invoice Course Connection Count</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>0</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

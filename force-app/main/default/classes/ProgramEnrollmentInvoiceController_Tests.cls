@@ -669,4 +669,78 @@ private class ProgramEnrollmentInvoiceController_Tests {
             'Trigger should clear Regenerate_Invoice__c after test regeneration.'
         );
     }
+
+    @isTest
+    static void test_IsReadyForInvoiceGeneration_requiresCoursePerTermEnrollment() {
+        Id peId = programEnrollmentReadyForInvoiceId();
+        System.assert(ProgramEnrollmentInvoiceController.isReadyForInvoiceGeneration(peId));
+
+        Term_Enrollment__c te2 = new Term_Enrollment__c(
+            Name = 'Second Term Enrollment',
+            Program_Enrollment__c = peId
+        );
+        insert te2;
+
+        System.assert(
+            !ProgramEnrollmentInvoiceController.isReadyForInvoiceGeneration(peId),
+            'Two Term Enrollments with one Course Connection must not be invoice-ready.'
+        );
+    }
+
+    @isTest
+    static void test_IsProgramEnrollmentInvoiceStale_whenCourseCountLagsTermEnrollments() {
+        Id peId = programEnrollmentReadyForInvoiceId();
+        ProgramEnrollmentInvoiceController.generateAttachAndEmail(peId);
+
+        Term_Enrollment__c te2 = new Term_Enrollment__c(
+            Name = 'Second Term Enrollment',
+            Program_Enrollment__c = peId
+        );
+        insert te2;
+
+        System.assert(
+            ProgramEnrollmentInvoiceController.isProgramEnrollmentInvoiceStale(peId),
+            'Invoice should be stale when another Term Enrollment exists without a Course Connection.'
+        );
+    }
+
+    @isTest
+    static void test_IsProgramEnrollmentInvoiceStale_whenStampedCountBelowActual() {
+        if (
+            !Schema.SObjectType.hed__Program_Enrollment__c.fields.getMap()
+                .containsKey('Last_Invoice_Course_Connection_Count__c')
+        ) {
+            System.assert(true, 'Field not deployed in this org; skip stamped-count stale test.');
+            return;
+        }
+
+        Id peId = programEnrollmentReadyForInvoiceId();
+        ProgramEnrollmentInvoiceController.stampLastInvoiceCourseConnectionCount(peId, 1);
+
+        ContentVersion cv = new ContentVersion(
+            Title = 'Invoice_TestStamp',
+            PathOnClient = 'Invoice_TestStamp.pdf',
+            VersionData = Blob.valueOf('x'),
+            IsMajorVersion = true,
+            FirstPublishLocationId = peId
+        );
+        insert cv;
+
+        hed__Course_Enrollment__c ce2 = new hed__Course_Enrollment__c(
+            Term_Enrollment__c = [
+                SELECT Id
+                FROM Term_Enrollment__c
+                WHERE Program_Enrollment__c = :peId
+                LIMIT 1
+            ]
+            .Id
+        );
+        insert ce2;
+
+        System.assert(
+            ProgramEnrollmentInvoiceController.isProgramEnrollmentInvoiceStale(peId),
+            'Stale when live Course Connection count exceeds stamped count on the PE.'
+        );
+    }
+
 }

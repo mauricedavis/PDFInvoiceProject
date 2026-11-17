@@ -69,15 +69,13 @@ public without sharing class ProgramEnrollmentInvoiceController {
         if (peId == null) {
             return false;
         }
-        if (countCourseConnectionsForProgramEnrollment(peId) == 0) {
-            return false;
-        }
-        String aggSoql =
-            'SELECT MAX(LastModifiedDate) maxLm FROM hed__Course_Enrollment__c WHERE ' +
-            courseConnectionWhereClauseForProgramEnrollment();
-        AggregateResult[] ar = (AggregateResult[]) Database.query(aggSoql);
-        Datetime maxLm = ar.isEmpty() ? null : (Datetime) ar[0].get('maxLm');
-        if (maxLm == null) {
+        Integer termEnrollmentCount = [
+            SELECT COUNT()
+            FROM Term_Enrollment__c
+            WHERE Program_Enrollment__c = :peId
+        ];
+        Integer actualCount = countCourseConnectionsForProgramEnrollment(peId);
+        if (actualCount == 0) {
             return false;
         }
         List<ContentVersion> invRows = [
@@ -92,7 +90,64 @@ public without sharing class ProgramEnrollmentInvoiceController {
         if (invRows.isEmpty()) {
             return false;
         }
-        return maxLm > invRows[0].CreatedDate;
+        // Invoice PDF was generated before all Term Enrollments had matching Course Connections.
+        if (termEnrollmentCount > 0 && actualCount < termEnrollmentCount) {
+            return true;
+        }
+        String aggSoql =
+            'SELECT MAX(LastModifiedDate) maxLm FROM hed__Course_Enrollment__c WHERE ' +
+            courseConnectionWhereClauseForProgramEnrollment();
+        AggregateResult[] ar = (AggregateResult[]) Database.query(aggSoql);
+        Datetime maxLm = ar.isEmpty() ? null : (Datetime) ar[0].get('maxLm');
+        if (maxLm == null) {
+            return false;
+        }
+        if (maxLm > invRows[0].CreatedDate) {
+            return true;
+        }
+        return isInvoiceCourseConnectionCountOutOfDate(peId, actualCount);
+    }
+
+    /**
+     * When Course Connections were added after the PDF was rendered (including same-second races),
+     * {@link #countCourseConnectionsForProgramEnrollment} exceeds the count stamped at generation.
+     */
+    @TestVisible
+    private static Boolean isInvoiceCourseConnectionCountOutOfDate(Id peId, Integer actualCount) {
+        Map<String, Schema.SObjectField> peFields = Schema.SObjectType.hed__Program_Enrollment__c.fields.getMap();
+        if (!peFields.containsKey('Last_Invoice_Course_Connection_Count__c')) {
+            return false;
+        }
+        List<hed__Program_Enrollment__c> rows = [
+            SELECT Last_Invoice_Course_Connection_Count__c
+            FROM hed__Program_Enrollment__c
+            WHERE Id = :peId
+            LIMIT 1
+        ];
+        if (rows.isEmpty()) {
+            return false;
+        }
+        Decimal stamped = (Decimal) rows[0].get('Last_Invoice_Course_Connection_Count__c');
+        if (stamped == null) {
+            return false;
+        }
+        return actualCount > stamped.intValue();
+    }
+
+    @TestVisible
+    private static void stampLastInvoiceCourseConnectionCount(Id programEnrollmentId, Integer courseConnectionCount) {
+        if (programEnrollmentId == null) {
+            return;
+        }
+        Map<String, Schema.SObjectField> peFields = Schema.SObjectType.hed__Program_Enrollment__c.fields.getMap();
+        if (!peFields.containsKey('Last_Invoice_Course_Connection_Count__c')) {
+            return;
+        }
+        hed__Program_Enrollment__c peUpdate = new hed__Program_Enrollment__c(
+            Id = programEnrollmentId,
+            Last_Invoice_Course_Connection_Count__c = courseConnectionCount
+        );
+        update peUpdate;
     }
 
     public static Integer countCourseConnectionsForProgramEnrollment(Id peId) {
@@ -183,6 +238,20 @@ public without sharing class ProgramEnrollmentInvoiceController {
      * Batch execute path: queueable already enforced readiness; avoid re-check that would re-enqueue forever.
      */
     public static void generateAttachAndEmailForBatch(Id programEnrollmentId) {
+        if (programEnrollmentId == null) {
+            return;
+        }
+        // Batch may start seconds after the queueable marked the PE ready; re-check so we never
+        // render a partial invoice when additional Term/Course rows are still committing.
+        if (!Test.isRunningTest() && !isReadyForInvoiceGeneration(programEnrollmentId)) {
+            System.debug(
+                'ProgramEnrollmentInvoiceController: batch path PE ' +
+                    programEnrollmentId +
+                    ' no longer ready; re-enqueuing ProgramEnrollmentInvoiceQueueable.'
+            );
+            System.enqueueJob(new ProgramEnrollmentInvoiceQueueable(programEnrollmentId));
+            return;
+        }
         generateAttachAndEmailInternal(programEnrollmentId, null, false);
     }
 
@@ -367,5 +436,6 @@ public without sharing class ProgramEnrollmentInvoiceController {
             FirstPublishLocationId = enrollment.Id
         );
         insert invoiceVersion;
+        stampLastInvoiceCourseConnectionCount(enrollment.Id, countCourseConnectionsForProgramEnrollment(enrollment.Id));
     }
 }

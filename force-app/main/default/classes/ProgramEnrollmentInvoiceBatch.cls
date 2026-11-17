@@ -33,6 +33,9 @@ public without sharing class ProgramEnrollmentInvoiceBatch implements Database.B
     public void execute(Database.BatchableContext bc, List<Id> scope) {
         for (Id peId : scope) {
             try {
+                if (ProgramEnrollmentInvoiceController.isProgramEnrollmentInvoiceStale(peId)) {
+                    ProgramEnrollmentInvoiceController.deleteGeneratedInvoiceContentDocuments(peId);
+                }
                 ProgramEnrollmentInvoiceController.generateAttachAndEmailForBatch(peId);
             } catch (Exception e) {
                 System.debug('ProgramEnrollmentInvoiceBatch execute for ' + peId + ': ' + e.getTypeName() + ' - ' + e.getMessage());

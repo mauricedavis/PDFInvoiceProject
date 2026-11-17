@@ -69,6 +69,8 @@ See **`FLOW_DEPLOY_SCOPE.md`** for v18 vs v19 behaviour and deploy scope.
 
 | When (UTC)        | Org        | Deploy Id          | Components | Tests |
 |-------------------|------------|--------------------|------------|-------|
+| 2026-11-17        | ucsf-fullsb | `0Afbb00000EvhucCAB` | `manifest-invoice-multi-course-race-fix`: `ProgramEnrollmentInvoiceBatch`, `ProgramEnrollmentInvoiceController` (+ stale/readiness stamp), `Last_Invoice_Course_Connection_Count__c`, tests | RunSpecifiedTests: `ProgramEnrollmentInvoiceController_Tests` 29/29 pass; anon smoke `invoice-multi-course-race-smoke.apex` OK |
+| 2026-11-17        | ucsf-prod  | `0AfPj000002MiE9KAK` | Same as prior fullsb row | RunSpecifiedTests: `ProgramEnrollmentInvoiceController_Tests` 29/29 pass; anon smoke OK |
 | 2026-04-08        | ucsf-fullsb | `0Afbb00000Bgg2vCAB` | `ProgramEnrollmentStudentEmailQueueable` (skip confirmation when PE `Currently Enrolled`), `ProgramEnrollmentInvoiceController` (`enqueue` skip + test helper), tests | RunSpecifiedTests: StudentEmail + InvoiceController 45/45 pass |
 | 2026-04-08        | ucsf-prod  | `0AfPj00000240TJKAY` | Same as prior fullsb row | RunSpecifiedTests: 45/45 pass |
 | 2026-04-08        | ucsf-fullsb | `0Afbb00000BgdufCAB` | Apex `PaymentReceivedEmailInvocable` + tests (no logo; enrollment line from Course Connection / offering) | RunSpecifiedTests: `PaymentReceivedEmailInvocable_Tests` 10/10 pass |
